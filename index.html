@@ -746,7 +746,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   const P = 1000;                       // période des bips de synchro (ms, horloge du Départ)
   const MS_PER_M = 1000 / CC.SOUND_SPEED;
   const D_SYNC_M = 0.1, D_CLAP_M = 0.35, D_SELF_M = 0.08;
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
 
   // ---------------- utilitaires ----------------
   const $ = (s) => document.querySelector(s);
@@ -1596,7 +1596,12 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   $('#btnClearNo').onclick = () => { $('#clearConfirm').hidden = true; };
   $('#btnClearYes').onclick = () => { S.results = []; store.set('results', []); $('#clearConfirm').hidden = true; renderList(); };
 
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    const hadCtl = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => { });
+    // nouvelle version installée : on recharge tout de suite si aucune séance n'est en cours
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtl && !S.started) location.reload(); });
+  }
   window.ChronoApp = { S, Audio, Cam, Emit, Listen, Clap, Go, Pair, VERSION, enterCode, show };
 })();
 </script>
