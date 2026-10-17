@@ -3,7 +3,7 @@
   const CC = window.ChronoCore;
   const MS_PER_M = 1000 / CC.SOUND_SPEED;
   const D_CLAP_M = 0.35, D_SELF_M = 0.08;
-  const VERSION = '2.0.0';
+  const VERSION = '2.1.0';
 
   // ---------------- utilitaires ----------------
   const $ = (s) => document.querySelector(s);
@@ -256,6 +256,7 @@
       this.lum = new Uint8Array(W * H);
       const prevO = this.det ? this.det.o : (this._pendingO || {}), armed = this.det ? this.det.armed : true;
       this.det = new CC.GateDetector(W, H, prevO);
+      this.cv = new CC.ClapVision(W);
       this.det.armed = armed;
       this.vw = vw; this.vh = vh;
       $('#camWarn').hidden = !this.landscape; $('#camWarn').textContent = 'Tiens le téléphone debout (portrait).';
@@ -288,11 +289,13 @@
       this.fcount++;
       if (nowT - this.fT > 1000) { this.fps = this.fcount * 1000 / (nowT - this.fT); this.fcount = 0; this.fT = nowT; renderChips(); }
       const m = $('#meterBar'); if (m) m.style.width = Math.min(100, this.det.lastOccGate / this.det.o.occGate * 50) + '%';
-      if (ev) {
+      const fire = (e, fn) => {
         const box = $('#videoHome'); box.parentElement && box.parentElement.classList.add('fired');
         setTimeout(() => box.parentElement && box.parentElement.classList.remove('fired'), 350);
-        if (this.onEvent) this.onEvent(ev);
-      }
+        fn(e);
+      };
+      if (Clap.active) { const e = this.cv.push(this.det.occ, t); if (e) fire(e, (x) => Clap.onGate(x)); } // claquement : fermeture de l'écart entre les mains
+      else if (ev && this.onEvent) fire(ev, this.onEvent);
     },
     mount(target, hint) { const n = $('#videoHome'); if (target && n.parentElement !== target) target.appendChild(n); $('#camHint').textContent = hint || ''; },
     config(o) { if (this.det) Object.assign(this.det.o, o); else this._pendingO = o; },
@@ -414,13 +417,14 @@
   const Clap = {
     active: false, vals: [], pending: [], timer: null, N: 3,
     start() {
-      this.active = true; this.vals = []; this.pending = []; S.D = null; S.Dspread = null;
+      this.active = true; this.vals = []; this.pending = []; S.D = null; S.Dspread = null; S.calibSaved = false;
       Cam.config({ dir: 0, cooldownMs: 700, clearMs: 250, band: null }); if (Cam.det) Cam.det.armed = true;
+      if (Cam.cv) Cam.cv.hist = [];
       if (this.timer) clearInterval(this.timer);
       this.timer = setInterval(() => this._poll(), 100); renderRun(); renderChips();
     },
     stop() { this.active = false; if (this.timer) clearInterval(this.timer); this.timer = null; applyGateConfig(); renderRun(); renderChips(); },
-    onGate(ev) { this.pending.push(ev.t); },
+    onGate(ev) { if (ev.interp === false) return; this.pending.push(ev.t); }, // contact non extrapolable : ignoré
     _poll() {
       const sr = Audio.sr, n0 = this.vals.length;
       this.pending = this.pending.filter(t => {
@@ -437,9 +441,10 @@
         const best = this.vals.map(v => [v, Math.abs(v - med)]).sort((a, b) => a[1] - b[1]).slice(0, this.N).map(x => x[0]);
         const spread = Math.max(...best) - Math.min(...best);
         if (spread <= 8 || this.vals.length >= 7) {
-          S.D = CC.median(best) + D_CLAP_M * MS_PER_M; S.Dspread = spread; S.camRestartsAtClap = Cam.restarts;
+          S.D = CC.median(best) + D_CLAP_M * MS_PER_M; S.Dspread = spread; S.camRestartsAtClap = Cam.restarts; S.calibSaved = false;
+          store.set('calib', { D: S.D, fps: Math.round(Cam.fps), vw: Cam.vw, vh: Cam.vh, at: Date.now() });
           this.stop(); Audio.beep(2);
-          showBig('Prêt', S.role === 'finish' ? 'Calibré. Le temps s\'affichera ici à ton passage.' : 'Calibré. Arme la cellule.', 'Caméra calibrée');
+          showBig('Prêt', 'Calibré et mémorisé pour les prochaines séances.' + (S.role === 'finish' ? ' Pose le téléphone sur la ligne.' : ' Arme la cellule.'), 'Caméra calibrée');
           Voice.say('Prêt');
           return;
         }
@@ -563,7 +568,7 @@
     chips.push(S.origin != null ? ['ok', 'Synchro ' + fmt.t3(S.interval) + ' s'] : ['bad', 'Pas de synchro']);
     if (S.role === 'start') chips.push(S.R != null ? ['ok', 'Haut-parleur OK'] : ['warn', 'Haut-parleur ?']);
     if (S.role === 'finish' && S.origin != null) chips.push(S.rho ? ['ok', 'Dérive ' + comma((S.rho * 1e6).toFixed(1)) + ' ppm'] : ['', 'Dérive à mesurer']);
-    if (needCalib()) chips.push(S.D != null ? ['ok', 'Caméra calibrée'] : ['warn', 'Caméra à calibrer']);
+    if (needCalib()) chips.push(S.D != null ? ['ok', S.calibSaved ? 'Calibration mémorisée' : 'Caméra calibrée'] : ['warn', 'Caméra à calibrer']);
     chips.push([Cam.fps >= 50 ? 'ok' : Cam.fps >= 24 ? '' : 'bad', Math.round(Cam.fps) + ' i/s']);
     c.replaceChildren(...chips.map(([k, t]) => mk('span', 'chip ' + k, t)));
   }
@@ -633,19 +638,27 @@
     if (left > 0) { b.textContent = fmt.clock(left).replace(/,\d$/, ''); b.className = 'big num ' + (left < 2600 ? 'go' : ''); $('#bigSub').textContent = left > p.sPerf - p.tMarks ? 'Place-toi. « À vos marques » arrive.' : left > p.sPerf - p.tSet ? 'À vos marques' : 'Prêts'; }
     else { b.textContent = 'Parti'; b.className = 'big go'; $('#bigSub').textContent = 'Le temps s\'affiche sur l\'Arrivée.'; }
   }
-  const CLAP_HELP = 'Téléphone posé à sa place. À 30–50 cm de l\'objectif, tiens la main gauche immobile juste à gauche de la ligne rouge et frappe-la avec la main droite qui arrive de la droite. Un bip confirme chaque claquement.';
+  const CLAP_HELP = 'Téléphone posé debout, claque des mains à 30–60 cm devant l\'objectif, mains bien visibles à l\'écran. Un bip confirme chaque claquement. Sert à mesurer le retard de la caméra de ce téléphone ; c\'est mémorisé ensuite.';
   function renderRun() {
     if (S.screen !== 'run') return;
     $('#modeBip').setAttribute('aria-pressed', S.mode === 'bip'); $('#modeCell').setAttribute('aria-pressed', S.mode === 'cell');
-    if (needCalib() && S.D == null && !Clap.active) { Clap.start(); return; }
+    if (needCalib() && S.D == null && !Clap.active) {
+      // calibration mémorisée : même caméra (résolution) et même cadence → pas besoin de recommencer
+      const c = store.get('calib', null);
+      if (c && c.vw === Cam.vw && c.vh === Cam.vh && (!Cam.fps || Math.abs(c.fps - Cam.fps) <= 8) && Date.now() - c.at < 365 * 864e5) {
+        S.D = c.D; S.calibSaved = true; S.camRestartsAtClap = Cam.restarts;
+        showBig('Prêt', S.role === 'finish' ? 'Calibration caméra mémorisée. Pose le téléphone sur la ligne.' : 'Calibration caméra mémorisée.', 'Caméra calibrée');
+      } else { Clap.start(); return; }
+    }
     if (!needCalib() && Clap.active) { Clap.stop(); return; }
     const ctl = $('#ctl'); ctl.replaceChildren();
     const camRun = $('#camRun');
     $('#calibHelp').hidden = true;
+    camRun.classList.toggle('calib', Clap.active);
     if (Clap.active) {
       camRun.hidden = false;
-      Cam.mount(camRun, S.role === 'finish' ? 'Pose le téléphone à son emplacement, ligne rouge sur la ligne d\'arrivée.' : 'Pose le téléphone à son emplacement, ligne rouge 50 cm devant ta ligne de départ.');
-      showBig(Math.min(Clap.N, Clap.vals.length) + '/' + Clap.N, 'Claque 3 fois des mains sur la ligne rouge', 'Calibration caméra', Clap.vals.length ? '' : 'dim');
+      Cam.mount(camRun, 'Claque des mains devant l\'objectif.');
+      showBig(Math.min(Clap.N, Clap.vals.length) + '/' + Clap.N, 'Claque 3 fois des mains devant l\'objectif', 'Calibration caméra (une seule fois)', Clap.vals.length ? '' : 'dim');
       const ch = $('#calibHelp'); ch.hidden = false; ch.textContent = CLAP_HELP;
       renderList(); renderChips(); renderBanners();
       return;
@@ -815,7 +828,7 @@
     show('prep'); Sync.listen('start');
     renderBanners();
   };
-  $('#btnRecalib').onclick = () => { dlg.close(); S.D = null; if (S.screen === 'run') Clap.start(); };
+  $('#btnRecalib').onclick = () => { dlg.close(); S.D = null; S.calibSaved = false; store.set('calib', null); if (S.screen === 'run') Clap.start(); };
   $('#btnClear').onclick = () => { $('#clearConfirm').hidden = false; };
   $('#btnClearNo').onclick = () => { $('#clearConfirm').hidden = true; };
   $('#btnClearYes').onclick = () => { S.results = []; store.set('results', []); $('#clearConfirm').hidden = true; renderList(); };

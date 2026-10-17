@@ -135,6 +135,7 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cam .gate { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; transform: translateX(-50%); background: var(--tartan); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
 .cam.fired .gate { background: #39E58C; width: 7px; }
+.cam.calib .gate, .cam.calib .meter { display: none; }
 .cam .camhint { position: absolute; left: 8px; right: 8px; top: 8px; font-size: 12.5px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
 .cam .meter { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.25); overflow: hidden; }
 .cam .meter i { display: block; height: 100%; width: 0%; background: #fff; transition: width 80ms linear; }
@@ -213,7 +214,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       <summary>Comment ça marche (1 min)</summary>
       <ol>
         <li>Ouvre <b>Arrivée</b> sur un téléphone, <b>Départ</b> sur l'autre. Pose-les côte à côte et <b>claque 2 fois des mains</b> juste au-dessus : les deux écrans affichent le même nombre, la synchro est faite.</li>
-        <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée, puis <b>claque 3 fois des mains</b> devant elle : elle dit « Prêt ».</li>
+        <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée. La toute première fois, elle te demande <b>3 claquements de mains</b> devant l'objectif (calibration de sa caméra, mémorisée ensuite).</li>
         <li>Au départ, appuie sur <b>Lancer un départ</b> (volume du Départ à fond). Ton temps s'affiche et s'annonce à l'arrivée.</li>
         <li>En fin de séance : <b>Corriger la dérive</b> sur les deux, clap-clap côte à côte, puis montre le QR code du Départ à la caméra de l'Arrivée. Les temps sont corrigés et la dérive est mémorisée pour les fois suivantes.</li>
       </ol>

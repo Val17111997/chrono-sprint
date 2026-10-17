@@ -201,6 +201,25 @@ for (const c of [
   ok(f.n >= 40 && Math.abs(f.rhoPpm - 31) < 5 && Math.abs(f.h0 - (off + 4)) < 0.15 && s.shifts === 2, `synchro avec marches : ${f.n} points gardés, ${s.shifts} marches, dérive ${f.rhoPpm.toFixed(2)} ppm, niveau final ${(f.h0 - off).toFixed(2)} ms (attendu 4)`);
 }
 
+{ // claquement vu par la caméra (mains qui se rejoignent n'importe où dans l'image)
+  let worst = 0, miss = 0, n = 0;
+  for (const fps of [30, 60]) for (const style of ['sym', 'still']) for (const meet of [40, 60, 80]) for (const ph of [0, 0.4, 0.8]) {
+    const w = 120, h = 160, gd = new C.GateDetector(w, h, { band: null }), cv = new C.ClapVision(w);
+    const bgT = new Float32Array(w * h); for (let i = 0; i < w * h; i++) bgT[i] = 90 + 60 * rnd();
+    const v = style === 'sym' ? 300 : 500, contact = 2200 + ph * 1000 / fps;
+    let ev = null;
+    for (let f = 0; f < fps * 2.5; f++) {
+      const t = 1000 + f * 1000 / fps, gap = Math.max(0, (contact - t) / 1000 * v), vis = t >= 1500;
+      const lr = style === 'sym' ? meet - gap : meet, rl = style === 'sym' ? meet + gap : meet + 2 * gap;
+      const lum = new Uint8ClampedArray(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let val = bgT[y * w + x]; if (vis && y > 40 && y < 120) { const cl = Math.max(0, Math.min(x + .5, lr) - Math.max(x - .5, lr - 25)), cr = Math.max(0, Math.min(x + .5, rl + 25) - Math.max(x - .5, rl)); const cov = Math.min(1, cl + cr); if (cov > 0) val = val * (1 - cov) + 200 * cov; } lum[y * w + x] = val + 3 * gauss(); }
+      gd.push(lum, t); const e = cv.push(gd.occ, t); if (e && !ev) ev = e;
+    }
+    n++; if (!ev || !ev.interp) miss++; else worst = Math.max(worst, Math.abs(ev.t - contact));
+  }
+  ok(miss <= 6 && worst < 2.5, `claquement vu par la caméra : ${n - miss}/${n} retenus (les autres sont ignorés, on reclaque), erreur max ${worst.toFixed(2)} ms`);
+}
+
 // 5. Synchro : dérive + bruit
 {
   const s = new C.SyncFit(1000);

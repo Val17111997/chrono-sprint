@@ -137,6 +137,7 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cam .gate { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; transform: translateX(-50%); background: var(--tartan); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
 .cam.fired .gate { background: #39E58C; width: 7px; }
+.cam.calib .gate, .cam.calib .meter { display: none; }
 .cam .camhint { position: absolute; left: 8px; right: 8px; top: 8px; font-size: 12.5px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
 .cam .meter { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.25); overflow: hidden; }
 .cam .meter i { display: block; height: 100%; width: 0%; background: #fff; transition: width 80ms linear; }
@@ -215,7 +216,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       <summary>Comment ça marche (1 min)</summary>
       <ol>
         <li>Ouvre <b>Arrivée</b> sur un téléphone, <b>Départ</b> sur l'autre. Pose-les côte à côte et <b>claque 2 fois des mains</b> juste au-dessus : les deux écrans affichent le même nombre, la synchro est faite.</li>
-        <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée, puis <b>claque 3 fois des mains</b> devant elle : elle dit « Prêt ».</li>
+        <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée. La toute première fois, elle te demande <b>3 claquements de mains</b> devant l'objectif (calibration de sa caméra, mémorisée ensuite).</li>
         <li>Au départ, appuie sur <b>Lancer un départ</b> (volume du Départ à fond). Ton temps s'affiche et s'annonce à l'arrivée.</li>
         <li>En fin de séance : <b>Corriger la dérive</b> sur les deux, clap-clap côte à côte, puis montre le QR code du Départ à la caméra de l'Arrivée. Les temps sont corrigés et la dérive est mémorisée pour les fois suivantes.</li>
       </ol>
@@ -712,6 +713,59 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     }
   }
 
+  // ---------------- Claquement vu par la caméra : fermeture de l'écart entre les deux mains ----------------
+  // À chaque image : deux blocs occupés (les mains) séparés par un écart. Quand l'écart disparaît, l'instant du contact
+  // est extrapolé à partir des deux dernières images où l'écart était visible (mouvement quasi uniforme juste avant le choc).
+  // Fonctionne où que les mains se rencontrent dans l'image, mains en mouvement horizontal.
+  class ClapVision {
+    constructor(w, o = {}) { this.w = w; this.o = Object.assign({ thr: 0.06, minBlob: 3, maxGap: 0.95 }, o); this.hist = []; this.last = -1e12; }
+    _gap(occ) { // plus grand écart entre deux blocs d'au moins minBlob colonnes
+      const w = this.w, o = this.o, runs = [];
+      let st = -1;
+      for (let x = 0; x <= w; x++) { const on = x < w && occ[x] >= o.thr; if (on && st < 0) st = x; else if (!on && st >= 0) { runs.push([st, x - 1]); st = -1; } }
+      const big = runs.filter(r => r[1] - r[0] + 1 >= o.minBlob);
+      if (big.length < 2) return { n: big.length, runs: big };
+      let best = null;
+      for (let i = 0; i + 1 < big.length; i++) { const g = big[i + 1][0] - big[i][1] - 1; if (g > 0 && (!best || g > best.g)) best = { g, c: (big[i][1] + big[i + 1][0]) / 2, L: big[i], R: big[i + 1] }; }
+      return best ? Object.assign(best, { n: big.length, runs: big }) : { n: big.length, runs: big };
+    }
+    push(occ, t) {
+      const r = this._gap(occ), H = this.hist;
+      let ev = null;
+      const runsAll = this._runs(occ);
+      if (r.g != null && r.g < this.w * this.o.maxGap) H.push({ t, g: r.g, c: r.c, eL: r.L[1], eR: r.R[0], runs: runsAll });
+      else if (H.length) {
+        const a = H[H.length - 1];
+        // écart refermé : un bloc couvre maintenant l'ancien centre de l'écart
+        const merged = r.runs.some(q => q[0] <= a.c && q[1] >= a.c);
+        if (merged && t - a.t < 150 && t - this.last > 400) {
+          let tc = (a.t + t) / 2, interp = false;
+          const b = this.prevFrame && this.prevFrame.t < a.t && a.t - this.prevFrame.t < 150 ? this.prevFrame : null;
+          if (b) {
+            // vitesse de chaque bord avant (main gauche : bord droit ; main droite : bord gauche), runs les plus proches
+            let dL = null, dR = null;
+            for (const q of b.runs) { if (q[1] <= a.eL + 1 && a.eL - q[1] < 40 && (dL === null || a.eL - q[1] < dL)) dL = a.eL - q[1]; }
+            for (const q of b.runs) { if (q[0] >= a.eR - 1 && q[0] - a.eR < 40 && (dR === null || q[0] - a.eR < dR)) dR = q[0] - a.eR; }
+            let close = null;
+            if (dL !== null && dR !== null) close = dL + dR; else if (dL !== null) close = 2 * dL; else if (dR !== null) close = 2 * dR;
+            if (close > 0.5) { tc = Math.min(t, a.t + (a.g + 1) * (a.t - b.t) / close); interp = true; }
+          }
+          ev = { t: tc, gap: a.g, interp };
+          this.last = t;
+        }
+        if (merged || t - a.t > 300) this.hist = [];
+      }
+      if (H.length > 6) H.shift();
+      this.prevFrame = this.curFrame; this.curFrame = { t, runs: runsAll };
+      return ev;
+    }
+    _runs(occ) {
+      const w = this.w, thr = this.o.thr, runs = []; let st = -1;
+      for (let x = 0; x <= w; x++) { const on = x < w && occ[x] >= thr; if (on && st < 0) st = x; else if (!on && st >= 0) { runs.push([st, x - 1]); st = -1; } }
+      return runs;
+    }
+  }
+
   // ---------------- Régression robuste ----------------
   function linfit(xs, ys) {
     const n = xs.length; let sx = 0, sy = 0; for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; }
@@ -817,7 +871,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   function codeOf(tau) { return ((Math.round(tau) % CODE_MOD) + CODE_MOD) % CODE_MOD; }
   function codeDiff(code, tauA) { return ((code - Math.round(tauA)) % CODE_MOD + CODE_MOD) % CODE_MOD; }
 
-  const API = { SOUND_SPEED, FFT, makeChirp, makeGun, median, mad, MatchedFilter, detectClapOnset, OnsetDetector, findClapPair, GateDetector, linfit, SyncFit, tauFinish, tauStart, gridResult, codeOf, codeDiff, GRID, CODE_MOD };
+  const API = { SOUND_SPEED, FFT, makeChirp, makeGun, median, mad, MatchedFilter, detectClapOnset, OnsetDetector, findClapPair, GateDetector, ClapVision, linfit, SyncFit, tauFinish, tauStart, gridResult, codeOf, codeDiff, GRID, CODE_MOD };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.ChronoCore = API;
 })(typeof self !== 'undefined' ? self : this);
 </script>
@@ -826,7 +880,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   const CC = window.ChronoCore;
   const MS_PER_M = 1000 / CC.SOUND_SPEED;
   const D_CLAP_M = 0.35, D_SELF_M = 0.08;
-  const VERSION = '2.0.0';
+  const VERSION = '2.1.0';
 
   // ---------------- utilitaires ----------------
   const $ = (s) => document.querySelector(s);
@@ -1079,6 +1133,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       this.lum = new Uint8Array(W * H);
       const prevO = this.det ? this.det.o : (this._pendingO || {}), armed = this.det ? this.det.armed : true;
       this.det = new CC.GateDetector(W, H, prevO);
+      this.cv = new CC.ClapVision(W);
       this.det.armed = armed;
       this.vw = vw; this.vh = vh;
       $('#camWarn').hidden = !this.landscape; $('#camWarn').textContent = 'Tiens le téléphone debout (portrait).';
@@ -1111,11 +1166,13 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       this.fcount++;
       if (nowT - this.fT > 1000) { this.fps = this.fcount * 1000 / (nowT - this.fT); this.fcount = 0; this.fT = nowT; renderChips(); }
       const m = $('#meterBar'); if (m) m.style.width = Math.min(100, this.det.lastOccGate / this.det.o.occGate * 50) + '%';
-      if (ev) {
+      const fire = (e, fn) => {
         const box = $('#videoHome'); box.parentElement && box.parentElement.classList.add('fired');
         setTimeout(() => box.parentElement && box.parentElement.classList.remove('fired'), 350);
-        if (this.onEvent) this.onEvent(ev);
-      }
+        fn(e);
+      };
+      if (Clap.active) { const e = this.cv.push(this.det.occ, t); if (e) fire(e, (x) => Clap.onGate(x)); } // claquement : fermeture de l'écart entre les mains
+      else if (ev && this.onEvent) fire(ev, this.onEvent);
     },
     mount(target, hint) { const n = $('#videoHome'); if (target && n.parentElement !== target) target.appendChild(n); $('#camHint').textContent = hint || ''; },
     config(o) { if (this.det) Object.assign(this.det.o, o); else this._pendingO = o; },
@@ -1237,13 +1294,14 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   const Clap = {
     active: false, vals: [], pending: [], timer: null, N: 3,
     start() {
-      this.active = true; this.vals = []; this.pending = []; S.D = null; S.Dspread = null;
+      this.active = true; this.vals = []; this.pending = []; S.D = null; S.Dspread = null; S.calibSaved = false;
       Cam.config({ dir: 0, cooldownMs: 700, clearMs: 250, band: null }); if (Cam.det) Cam.det.armed = true;
+      if (Cam.cv) Cam.cv.hist = [];
       if (this.timer) clearInterval(this.timer);
       this.timer = setInterval(() => this._poll(), 100); renderRun(); renderChips();
     },
     stop() { this.active = false; if (this.timer) clearInterval(this.timer); this.timer = null; applyGateConfig(); renderRun(); renderChips(); },
-    onGate(ev) { this.pending.push(ev.t); },
+    onGate(ev) { if (ev.interp === false) return; this.pending.push(ev.t); }, // contact non extrapolable : ignoré
     _poll() {
       const sr = Audio.sr, n0 = this.vals.length;
       this.pending = this.pending.filter(t => {
@@ -1260,9 +1318,10 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
         const best = this.vals.map(v => [v, Math.abs(v - med)]).sort((a, b) => a[1] - b[1]).slice(0, this.N).map(x => x[0]);
         const spread = Math.max(...best) - Math.min(...best);
         if (spread <= 8 || this.vals.length >= 7) {
-          S.D = CC.median(best) + D_CLAP_M * MS_PER_M; S.Dspread = spread; S.camRestartsAtClap = Cam.restarts;
+          S.D = CC.median(best) + D_CLAP_M * MS_PER_M; S.Dspread = spread; S.camRestartsAtClap = Cam.restarts; S.calibSaved = false;
+          store.set('calib', { D: S.D, fps: Math.round(Cam.fps), vw: Cam.vw, vh: Cam.vh, at: Date.now() });
           this.stop(); Audio.beep(2);
-          showBig('Prêt', S.role === 'finish' ? 'Calibré. Le temps s\'affichera ici à ton passage.' : 'Calibré. Arme la cellule.', 'Caméra calibrée');
+          showBig('Prêt', 'Calibré et mémorisé pour les prochaines séances.' + (S.role === 'finish' ? ' Pose le téléphone sur la ligne.' : ' Arme la cellule.'), 'Caméra calibrée');
           Voice.say('Prêt');
           return;
         }
@@ -1386,7 +1445,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     chips.push(S.origin != null ? ['ok', 'Synchro ' + fmt.t3(S.interval) + ' s'] : ['bad', 'Pas de synchro']);
     if (S.role === 'start') chips.push(S.R != null ? ['ok', 'Haut-parleur OK'] : ['warn', 'Haut-parleur ?']);
     if (S.role === 'finish' && S.origin != null) chips.push(S.rho ? ['ok', 'Dérive ' + comma((S.rho * 1e6).toFixed(1)) + ' ppm'] : ['', 'Dérive à mesurer']);
-    if (needCalib()) chips.push(S.D != null ? ['ok', 'Caméra calibrée'] : ['warn', 'Caméra à calibrer']);
+    if (needCalib()) chips.push(S.D != null ? ['ok', S.calibSaved ? 'Calibration mémorisée' : 'Caméra calibrée'] : ['warn', 'Caméra à calibrer']);
     chips.push([Cam.fps >= 50 ? 'ok' : Cam.fps >= 24 ? '' : 'bad', Math.round(Cam.fps) + ' i/s']);
     c.replaceChildren(...chips.map(([k, t]) => mk('span', 'chip ' + k, t)));
   }
@@ -1456,19 +1515,27 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     if (left > 0) { b.textContent = fmt.clock(left).replace(/,\d$/, ''); b.className = 'big num ' + (left < 2600 ? 'go' : ''); $('#bigSub').textContent = left > p.sPerf - p.tMarks ? 'Place-toi. « À vos marques » arrive.' : left > p.sPerf - p.tSet ? 'À vos marques' : 'Prêts'; }
     else { b.textContent = 'Parti'; b.className = 'big go'; $('#bigSub').textContent = 'Le temps s\'affiche sur l\'Arrivée.'; }
   }
-  const CLAP_HELP = 'Téléphone posé à sa place. À 30–50 cm de l\'objectif, tiens la main gauche immobile juste à gauche de la ligne rouge et frappe-la avec la main droite qui arrive de la droite. Un bip confirme chaque claquement.';
+  const CLAP_HELP = 'Téléphone posé debout, claque des mains à 30–60 cm devant l\'objectif, mains bien visibles à l\'écran. Un bip confirme chaque claquement. Sert à mesurer le retard de la caméra de ce téléphone ; c\'est mémorisé ensuite.';
   function renderRun() {
     if (S.screen !== 'run') return;
     $('#modeBip').setAttribute('aria-pressed', S.mode === 'bip'); $('#modeCell').setAttribute('aria-pressed', S.mode === 'cell');
-    if (needCalib() && S.D == null && !Clap.active) { Clap.start(); return; }
+    if (needCalib() && S.D == null && !Clap.active) {
+      // calibration mémorisée : même caméra (résolution) et même cadence → pas besoin de recommencer
+      const c = store.get('calib', null);
+      if (c && c.vw === Cam.vw && c.vh === Cam.vh && (!Cam.fps || Math.abs(c.fps - Cam.fps) <= 8) && Date.now() - c.at < 365 * 864e5) {
+        S.D = c.D; S.calibSaved = true; S.camRestartsAtClap = Cam.restarts;
+        showBig('Prêt', S.role === 'finish' ? 'Calibration caméra mémorisée. Pose le téléphone sur la ligne.' : 'Calibration caméra mémorisée.', 'Caméra calibrée');
+      } else { Clap.start(); return; }
+    }
     if (!needCalib() && Clap.active) { Clap.stop(); return; }
     const ctl = $('#ctl'); ctl.replaceChildren();
     const camRun = $('#camRun');
     $('#calibHelp').hidden = true;
+    camRun.classList.toggle('calib', Clap.active);
     if (Clap.active) {
       camRun.hidden = false;
-      Cam.mount(camRun, S.role === 'finish' ? 'Pose le téléphone à son emplacement, ligne rouge sur la ligne d\'arrivée.' : 'Pose le téléphone à son emplacement, ligne rouge 50 cm devant ta ligne de départ.');
-      showBig(Math.min(Clap.N, Clap.vals.length) + '/' + Clap.N, 'Claque 3 fois des mains sur la ligne rouge', 'Calibration caméra', Clap.vals.length ? '' : 'dim');
+      Cam.mount(camRun, 'Claque des mains devant l\'objectif.');
+      showBig(Math.min(Clap.N, Clap.vals.length) + '/' + Clap.N, 'Claque 3 fois des mains devant l\'objectif', 'Calibration caméra (une seule fois)', Clap.vals.length ? '' : 'dim');
       const ch = $('#calibHelp'); ch.hidden = false; ch.textContent = CLAP_HELP;
       renderList(); renderChips(); renderBanners();
       return;
@@ -1638,7 +1705,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     show('prep'); Sync.listen('start');
     renderBanners();
   };
-  $('#btnRecalib').onclick = () => { dlg.close(); S.D = null; if (S.screen === 'run') Clap.start(); };
+  $('#btnRecalib').onclick = () => { dlg.close(); S.D = null; S.calibSaved = false; store.set('calib', null); if (S.screen === 'run') Clap.start(); };
   $('#btnClear').onclick = () => { $('#clearConfirm').hidden = false; };
   $('#btnClearNo').onclick = () => { $('#clearConfirm').hidden = true; };
   $('#btnClearYes').onclick = () => { S.results = []; store.set('results', []); $('#clearConfirm').hidden = true; renderList(); };

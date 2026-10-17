@@ -431,6 +431,59 @@
     }
   }
 
+  // ---------------- Claquement vu par la caméra : fermeture de l'écart entre les deux mains ----------------
+  // À chaque image : deux blocs occupés (les mains) séparés par un écart. Quand l'écart disparaît, l'instant du contact
+  // est extrapolé à partir des deux dernières images où l'écart était visible (mouvement quasi uniforme juste avant le choc).
+  // Fonctionne où que les mains se rencontrent dans l'image, mains en mouvement horizontal.
+  class ClapVision {
+    constructor(w, o = {}) { this.w = w; this.o = Object.assign({ thr: 0.06, minBlob: 3, maxGap: 0.95 }, o); this.hist = []; this.last = -1e12; }
+    _gap(occ) { // plus grand écart entre deux blocs d'au moins minBlob colonnes
+      const w = this.w, o = this.o, runs = [];
+      let st = -1;
+      for (let x = 0; x <= w; x++) { const on = x < w && occ[x] >= o.thr; if (on && st < 0) st = x; else if (!on && st >= 0) { runs.push([st, x - 1]); st = -1; } }
+      const big = runs.filter(r => r[1] - r[0] + 1 >= o.minBlob);
+      if (big.length < 2) return { n: big.length, runs: big };
+      let best = null;
+      for (let i = 0; i + 1 < big.length; i++) { const g = big[i + 1][0] - big[i][1] - 1; if (g > 0 && (!best || g > best.g)) best = { g, c: (big[i][1] + big[i + 1][0]) / 2, L: big[i], R: big[i + 1] }; }
+      return best ? Object.assign(best, { n: big.length, runs: big }) : { n: big.length, runs: big };
+    }
+    push(occ, t) {
+      const r = this._gap(occ), H = this.hist;
+      let ev = null;
+      const runsAll = this._runs(occ);
+      if (r.g != null && r.g < this.w * this.o.maxGap) H.push({ t, g: r.g, c: r.c, eL: r.L[1], eR: r.R[0], runs: runsAll });
+      else if (H.length) {
+        const a = H[H.length - 1];
+        // écart refermé : un bloc couvre maintenant l'ancien centre de l'écart
+        const merged = r.runs.some(q => q[0] <= a.c && q[1] >= a.c);
+        if (merged && t - a.t < 150 && t - this.last > 400) {
+          let tc = (a.t + t) / 2, interp = false;
+          const b = this.prevFrame && this.prevFrame.t < a.t && a.t - this.prevFrame.t < 150 ? this.prevFrame : null;
+          if (b) {
+            // vitesse de chaque bord avant (main gauche : bord droit ; main droite : bord gauche), runs les plus proches
+            let dL = null, dR = null;
+            for (const q of b.runs) { if (q[1] <= a.eL + 1 && a.eL - q[1] < 40 && (dL === null || a.eL - q[1] < dL)) dL = a.eL - q[1]; }
+            for (const q of b.runs) { if (q[0] >= a.eR - 1 && q[0] - a.eR < 40 && (dR === null || q[0] - a.eR < dR)) dR = q[0] - a.eR; }
+            let close = null;
+            if (dL !== null && dR !== null) close = dL + dR; else if (dL !== null) close = 2 * dL; else if (dR !== null) close = 2 * dR;
+            if (close > 0.5) { tc = Math.min(t, a.t + (a.g + 1) * (a.t - b.t) / close); interp = true; }
+          }
+          ev = { t: tc, gap: a.g, interp };
+          this.last = t;
+        }
+        if (merged || t - a.t > 300) this.hist = [];
+      }
+      if (H.length > 6) H.shift();
+      this.prevFrame = this.curFrame; this.curFrame = { t, runs: runsAll };
+      return ev;
+    }
+    _runs(occ) {
+      const w = this.w, thr = this.o.thr, runs = []; let st = -1;
+      for (let x = 0; x <= w; x++) { const on = x < w && occ[x] >= thr; if (on && st < 0) st = x; else if (!on && st >= 0) { runs.push([st, x - 1]); st = -1; } }
+      return runs;
+    }
+  }
+
   // ---------------- Régression robuste ----------------
   function linfit(xs, ys) {
     const n = xs.length; let sx = 0, sy = 0; for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; }
@@ -536,6 +589,6 @@
   function codeOf(tau) { return ((Math.round(tau) % CODE_MOD) + CODE_MOD) % CODE_MOD; }
   function codeDiff(code, tauA) { return ((code - Math.round(tauA)) % CODE_MOD + CODE_MOD) % CODE_MOD; }
 
-  const API = { SOUND_SPEED, FFT, makeChirp, makeGun, median, mad, MatchedFilter, detectClapOnset, OnsetDetector, findClapPair, GateDetector, linfit, SyncFit, tauFinish, tauStart, gridResult, codeOf, codeDiff, GRID, CODE_MOD };
+  const API = { SOUND_SPEED, FFT, makeChirp, makeGun, median, mad, MatchedFilter, detectClapOnset, OnsetDetector, findClapPair, GateDetector, ClapVision, linfit, SyncFit, tauFinish, tauStart, gridResult, codeOf, codeDiff, GRID, CODE_MOD };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.ChronoCore = API;
 })(typeof self !== 'undefined' ? self : this);
