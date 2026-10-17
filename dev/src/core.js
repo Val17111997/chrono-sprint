@@ -94,7 +94,7 @@
           const w = k === 0 || k === N / 2 ? 1 : (k < N / 2 ? 2 : 0);
           hr[k] = hr[k] * w; hi[k] = -hi[k] * w;
         }
-        return { name: t.name, hr, hi, len: t.data.length, norm: Math.sqrt(energy) };
+        return { name: t.name, group: t.group || 'a', hr, hi, len: t.data.length, norm: Math.sqrt(energy) };
       });
       this.ms = sr / 1000;
     }
@@ -140,13 +140,13 @@
           let frac = 0;
           const y0 = env[best - 1], y1 = env[best], y2 = env[best + 1], den = y0 - 2 * y1 + y2;
           if (den < 0) frac = Math.max(-0.5, Math.min(0.5, 0.5 * (y0 - y2) / den));
-          all.push({ type: t.name, idx: best + frac, ratio: bv / floor, snrDb: 20 * Math.log10(bv / floor), amp: bv / t.norm, sharp });
+          all.push({ type: t.name, group: t.group, idx: best + frac, ratio: bv / floor, snrDb: 20 * Math.log10(bv / floor), amp: bv / t.norm, sharp });
         }
       }
-      // dédoublonnage (corrélations croisées montée/descente) sur ±(L+10 ms), puis filtrage netteté + zone rendue
+      // dédoublonnage par bande de fréquence (corrélations croisées montée/descente) sur ±(L+10 ms), puis netteté + zone rendue
       all.sort((a, b) => b.ratio - a.ratio);
       const kept = [], win = this.L + 10 * ms;
-      for (const d of all) if (!kept.some(r => Math.abs(r.idx - d.idx) < win)) kept.push(d);
+      for (const d of all) if (!kept.some(r => r.group === d.group && Math.abs(r.idx - d.idx) < win)) kept.push(d);
       return kept.filter(d => d.sharp && d.idx >= M && d.idx < M + this.step).sort((a, b) => a.idx - b.idx);
     }
   }
@@ -376,55 +376,79 @@
 
   // Côté Arrivée : bips de synchro (ancre = bip descendant, puis bips montants toutes les P ms, horloge du Départ).
   // Une ancre n'est adoptée qu'après 3 bips cohérents avec elle (évite qu'un faux bip décale toute la grille).
+  // Une marche de latence (décrochage audio) ouvre un nouveau segment : pente commune à tous les segments,
+  // ordonnée à l'origine propre à chacun ; h0 = niveau du segment courant. Aucun point n'est perdu.
   class SyncFit {
     constructor(periodMs = 1000) { this.P = periodMs; this.reset(); }
-    reset() { this.h0 = null; this.pts = []; this.cand = null; this.candPts = []; this.rej = []; this.shifts = 0; }
+    reset() { this.h0 = null; this.pts = []; this.cand = null; this.candPts = []; this.rej = []; this.shifts = 0; this.seg = 0; }
     anchor(h) {
       if (this.h0 !== null) { const f = this.fit(); const k = Math.round((h - f.h0) / f.b); if (k >= 0 && Math.abs(h - f.h0 - k * f.b) < 3) return 'same'; }
-      this.cand = h; this.candPts = [[0, h]]; return 'candidate';
+      this.cand = h; this.candPts = [[0, h, 0]]; return 'candidate';
     }
     chirp(h) {
-      let switched = false;
       if (this.cand !== null) {
         const k = Math.round((h - this.cand) / this.P), r = h - (this.cand + k * this.P);
         if (k >= 1 && Math.abs(r) < 3 + k * this.P * 2e-4) {
-          if (!this.candPts.some(p => p[0] === k)) this.candPts.push([k, h]);
-          if (this.candPts.length >= 3) { this.h0 = this.cand; this.pts = this.candPts.slice(); this.cand = null; this.candPts = []; switched = true; return { k, switched }; }
+          if (!this.candPts.some(p => p[0] === k)) this.candPts.push([k, h, 0]);
+          if (this.candPts.length >= 3) { this.h0 = this.cand; this.pts = this.candPts.slice(); this.seg = 0; this.rej = []; this.cand = null; this.candPts = []; return { k, switched: true }; }
         }
       }
       if (this.h0 === null) return { k: -1 };
       const f = this.fit();
       const k = Math.round((h - f.h0) / f.b), r = h - (f.h0 + k * f.b);
       if (k <= 0) return { k: -1 };
-      if (Math.abs(r) > 5) {
-        // décalage persistant (décrochage audio) : si 5 bips rejetés de suite sont cohérents entre eux, on repart d'eux
-        this.rej = (this.rej || []).concat([[k, h]]).slice(-5);
-        if (this.rej.length === 5) {
-          const g = linfit(this.rej.map(p => p[0]), this.rej.map(p => p[1]));
-          if (g.resid < 1 && Math.abs(g.b - f.b) < 0.05) { this.pts = this.rej.slice(); this.h0 = g.a; this.rej = []; this.shifts = (this.shifts || 0) + 1; return { k, shifted: true }; }
+      const thr = this.pts.length >= 8 ? Math.max(1.5, 6 * f.resid) : 5;
+      if (Math.abs(r) > thr) {
+        if (Math.abs(r) > 200) return { k: -1 };
+        this.rej.push([k, h, r]); if (this.rej.length > 6) this.rej.shift();
+        const last = this.rej.slice(-4);
+        if (last.length === 4 && new Set(last.map(x => x[0])).size === 4) {
+          const rs = last.map(x => x[2]);
+          if (Math.max(...rs) - Math.min(...rs) < 1.2) {
+            this.seg++; this.shifts++;
+            for (const x of last) if (!this.pts.some(q => q[0] === x[0])) this.pts.push([x[0], x[1], this.seg]);
+            this.rej = [];
+            return { k, shifted: true, step: median(rs) };
+          }
         }
         return { k: -1 };
       }
       this.rej = [];
       const e = this.pts.findIndex(p => p[0] === k);
-      if (e >= 0) { if (Math.abs(r) < Math.abs(this.pts[e][1] - (f.h0 + k * f.b))) this.pts[e] = [k, h]; return { k, dup: true }; }
-      this.pts.push([k, h]); return { k, switched };
+      if (e >= 0) { if (Math.abs(r) < Math.abs(this.pts[e][1] - (f.h0 + k * f.b))) this.pts[e] = [k, h, this.seg]; return { k, dup: true }; }
+      this.pts.push([k, h, this.seg]); return { k };
     }
     get ready() { return this.h0 !== null; }
+    _pooled(pts) {
+      const segs = new Map();
+      for (const p of pts) { const sg = p[2] || 0; if (!segs.has(sg)) segs.set(sg, []); segs.get(sg).push(p); }
+      let sxx = 0, sxy = 0; const mean = new Map();
+      for (const [sg, arr] of segs) {
+        let mk = 0, mh = 0; for (const p of arr) { mk += p[0]; mh += p[1]; } mk /= arr.length; mh /= arr.length;
+        mean.set(sg, [mk, mh]);
+        for (const p of arr) { sxx += (p[0] - mk) ** 2; sxy += (p[0] - mk) * (p[1] - mh); }
+      }
+      const b = sxx > 0 ? sxy / sxx : this.P, a = new Map();
+      for (const [sg, [mk, mh]] of mean) a.set(sg, mh - b * mk);
+      let ss = 0; for (const p of pts) { const r = p[1] - a.get(p[2] || 0) - b * p[0]; ss += r * r; }
+      const dof = pts.length - 1 - segs.size, resid = dof > 0 ? Math.sqrt(ss / dof) : 0;
+      let lastSeg = -1; for (const sg of segs.keys()) if (sg > lastSeg) lastSeg = sg;
+      return { b, a, aLast: a.get(this.seg) ?? a.get(lastSeg), resid, seB: sxx > 0 ? resid / Math.sqrt(sxx) : Infinity, r: (p) => p[1] - a.get(p[2] || 0) - b * p[0] };
+    }
     fit() {
       if (this.h0 === null || this.pts.length < 1) return null;
       if (this.pts.length < 3) return { h0: this.h0, b: this.P, rhoPpm: 0, resid: 0, n: this.pts.length, spanS: 0, err30: Infinity };
-      let pts = this.pts.slice();
-      let f = linfit(pts.map(p => p[0]), pts.map(p => p[1]));
+      let pts = this.pts.slice(), f = this._pooled(pts);
       for (let it = 0; it < 2 && pts.length > 5; it++) {
-        const r = pts.map(p => Math.abs(p[1] - f.a - f.b * p[0]));
+        const r = pts.map(p => Math.abs(f.r(p)));
         const lim = Math.max(0.6, 4 * median(r));
         const keep = pts.filter((p, i) => r[i] <= lim);
         if (keep.length === pts.length || keep.length < 4) break;
-        pts = keep; f = linfit(pts.map(p => p[0]), pts.map(p => p[1]));
+        pts = keep; f = this._pooled(pts);
       }
-      const kmax = Math.max(...pts.map(p => p[0]));
-      return { h0: f.a, b: f.b, rhoPpm: (f.b / this.P - 1) * 1e6, resid: f.resid, n: pts.length, spanS: kmax * this.P / 1000,
+      if (!isFinite(f.aLast)) return { h0: this.h0, b: this.P, rhoPpm: 0, resid: 0, n: pts.length, spanS: 0, err30: Infinity };
+      const kmax = Math.max(...pts.map(p => p[0])), kmin = Math.min(...pts.map(p => p[0]));
+      return { h0: f.aLast, b: f.b, rhoPpm: (f.b / this.P - 1) * 1e6, resid: f.resid, n: pts.length, spanS: (kmax - kmin) * this.P / 1000,
         err30: f.seB / this.P * 1800000 }; // incertitude (1σ) sur l'horloge commune après 30 min, en ms
     }
   }

@@ -96,6 +96,31 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .dots { display: flex; gap: 8px; } .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--sunk); border: 1px solid var(--line); }
 .dots i.on { background: var(--ok); border-color: var(--ok); }
 
+/* Appairage */
+.pair { display: grid; gap: 14px; padding-block: 8px 20px; }
+.pair-art { display: flex; align-items: center; justify-content: center; gap: 14px; padding-block: 18px 6px; }
+.pair-art .ph { width: 54px; height: 96px; border-radius: 12px; border: 3px solid var(--ink); position: relative; background: var(--surface); }
+.pair-art .ph::after { content: ""; position: absolute; left: 50%; top: 7px; width: 14px; height: 3px; border-radius: 2px; background: var(--ink); transform: translateX(-50%); }
+.pair-art .waves { display: flex; gap: 5px; align-items: center; }
+.pair-art .waves i { width: 4px; border-radius: 2px; background: var(--tartan); height: 14px; opacity: 0.25; }
+.pair-art .waves i:nth-child(2) { height: 26px; }
+#scrPrep[data-state="run"] .waves i { animation: wave 900ms ease-in-out infinite; }
+#scrPrep[data-state="run"] .waves i:nth-child(2) { animation-delay: 150ms; }
+#scrPrep[data-state="run"] .waves i:nth-child(3) { animation-delay: 300ms; }
+#scrPrep[data-state="ok"] .waves i { opacity: 1; background: var(--ok); }
+@keyframes wave { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.pair-h { font: 700 clamp(40px, 12vw, 64px)/0.92 var(--display); text-transform: uppercase; letter-spacing: 0.005em; }
+#scrPrep[data-state="ok"] .pair-h { color: var(--ok); }
+.pair-p { margin: 0; color: var(--muted); font-size: 16px; max-width: 36ch; }
+.prog { height: 10px; border-radius: 5px; background: var(--sunk); overflow: hidden; }
+.prog i { display: block; height: 100%; width: 0%; background: var(--tartan); border-radius: 5px; transition: width 300ms ease; }
+#scrPrep[data-state="ok"] .prog i { background: var(--ok); }
+.calib-help { margin: 6px 0 0; color: var(--ink); font-size: 15px; max-width: 40ch; }
+.check-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-top: 6px; border-top: 1px solid var(--line); margin-top: 4px; }
+.check-row .btn { flex: none; min-height: 44px; padding: 10px 14px; font-size: 15px; }
+.check-row .note { flex: 1 1 180px; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { #scrPrep[data-state="run"] .waves i { animation: none; opacity: 0.8; } .prog i { transition: none; } }
+
 /* Caméra */
 .cam { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 4 / 5; max-height: 46vh; width: 100%; max-width: 100%; margin-inline: auto; }
 .cam.small { aspect-ratio: 16 / 10; max-height: 30vh; }
@@ -177,37 +202,27 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     </div>
     <p class="note" id="homeErr" hidden></p>
     <details class="guide">
-      <summary>Préparer la séance (2 min)</summary>
+      <summary>Comment ça marche (1 min)</summary>
       <ol>
-        <li><b>Volume à fond</b> sur les deux téléphones, écouteurs Bluetooth déconnectés.</li>
-        <li>Ouvre <b>Arrivée</b> sur un téléphone, puis <b>Départ</b> sur l'autre. Pose-les <b>côte à côte</b> (10 cm).</li>
-        <li><b>Synchro</b> : sur le Départ, lance les bips. <b>Pendant les bips</b>, fais les 5 claquements de mains devant la caméra de l'Arrivée (et du Départ pour le mode Cellule). Attends « Synchro OK » sur l'Arrivée (30 à 60 s), puis Terminer.</li>
-        <li>Pose chaque téléphone <b>debout</b> et calé, au bord de la piste, caméra face à la piste, ligne rouge alignée sur la ligne au sol, à 3–8 m du couloir.</li>
-        <li><b>En fin de séance</b>, remets les téléphones côte à côte et fais « Synchro / contrôle » : la dérive est mesurée et les temps sont corrigés.</li>
+        <li><b>Volume à fond</b> sur les deux téléphones, verrouillage automatique de l'écran désactivé.</li>
+        <li>Ouvre <b>Arrivée</b> sur un téléphone, <b>Départ</b> sur l'autre, et pose-les <b>côte à côte</b>. Ils se synchronisent seuls (environ 30 s) puis passent à l'écran piste.</li>
+        <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée, puis <b>claque 3 fois des mains</b> devant elle : elle dit « Prêt ».</li>
+        <li>Va au départ et appuie sur <b>Lancer un départ</b>. Ton temps s'affiche et s'annonce à l'arrivée.</li>
+        <li>En fin de séance (ou toutes les 30 min), remets les téléphones côte à côte et appuie sur <b>Contrôler la synchro</b> sur le Départ : les temps sont corrigés.</li>
       </ol>
-      <p class="note">Désactive le verrouillage auto de l'écran, ne recharge pas la page et ne quitte pas l'app pendant la séance : la synchro serait perdue. Mode Cellule au départ : place la ligne rouge 50 cm devant ta ligne de départ pour que tes mains ne la déclenchent pas.</p>
+      <p class="note">Ne quitte pas l'app et ne recharge pas la page pendant la séance : la synchro serait perdue.</p>
     </details>
   </section>
 
-  <!-- Préparation -->
-  <section id="scrPrep" hidden>
-    <div class="steps">
-      <div class="step" id="stepSync">
-        <div class="step-h"><span class="n">1</span><h2>Synchro côte à côte</h2><span class="state" id="syncState">—</span></div>
-        <p id="syncHelp"></p>
-        <dl class="kv" id="syncKv"></dl>
-        <div class="row" id="syncBtns"></div>
-      </div>
-      <div class="step" id="stepClap">
-        <div class="step-h"><span class="n">2</span><h2>Calibrer la caméra</h2><span class="state" id="clapState">—</span></div>
-        <p id="clapHelp"></p>
-        <div class="cam small" id="camPrep"></div>
-        <div class="dots" id="clapDots"></div>
-        <dl class="kv" id="clapKv"></dl>
-        <button class="btn" id="btnClap">Commencer</button>
-      </div>
-      <button class="btn primary wide" id="btnToRun">Aller sur la piste</button>
-      <p class="note" id="prepNote"></p>
+  <!-- Appairage -->
+  <section id="scrPrep" hidden data-state="wait">
+    <div class="pair">
+      <div class="pair-art" aria-hidden="true"><span class="ph"></span><span class="waves"><i></i><i></i><i></i></span><span class="ph"></span></div>
+      <h2 class="pair-h" id="pairTitle">Appairage</h2>
+      <p class="pair-p" id="pairHelp"></p>
+      <div class="prog" role="progressbar" aria-label="Avancement de la synchro"><i id="pairBar"></i></div>
+      <dl class="kv" id="syncKv"></dl>
+      <div class="row" id="pairBtns"></div>
     </div>
   </section>
 
@@ -221,6 +236,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       <span class="lbl" id="bigLbl">Dernier temps</span>
       <div class="big num dim" id="big">—</div>
       <div class="sub" id="bigSub">&nbsp;</div>
+      <p class="calib-help" id="calibHelp" hidden></p>
     </div>
     <div class="cam" id="camRun"></div>
     <div class="ctl" id="ctl"></div>
@@ -236,13 +252,14 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
 <dialog id="dlgSettings">
   <form class="sheet" method="dialog" id="formSettings">
     <h2>Réglages</h2>
-    <div class="field"><label for="setRun">Distance de course (m)</label><input type="number" id="setRun" min="10" max="400" step="1" inputmode="numeric"><span class="hint">Sert à écarter les passages impossibles (trop rapides ou trop lents).</span></div>
+    <div class="field"><label for="setRun">Distance de course (m)</label><input type="number" id="setRun" min="10" max="400" step="1" inputmode="numeric"><span class="hint">Sert seulement à afficher ta vitesse moyenne.</span></div>
     <div class="field" data-for="start"><label for="setLead">Délai avant le départ au bip (s)</label><input type="number" id="setLead" min="15" max="90" step="1" inputmode="numeric"><span class="hint">Temps pour te placer. Le bip tombe toujours sur une minute ronde de l'horloge commune.</span></div>
     <div class="field" data-for="finish"><label for="setAth">Distance athlète ↔ téléphone Départ (m)</label><input type="number" id="setAth" min="0" max="10" step="0.5" inputmode="decimal"><span class="hint">Mode bip : corrige le temps que met le son à t'atteindre (3 ms par mètre).</span></div>
     <div class="field"><label for="setDir">Sens de passage pris en compte</label><select id="setDir"><option value="0">Les deux sens</option><option value="1">De gauche à droite (vu de l'écran)</option><option value="-1">De droite à gauche (vu de l'écran)</option></select></div>
     <label class="check" data-for="start"><input type="checkbox" id="setRearm"> Réarmer la cellule automatiquement</label>
     <label class="check"><input type="checkbox" id="setVoice"> Annonces vocales</label>
-    <div class="row"><button class="btn" type="button" id="btnResync">Synchro / contrôle</button><button class="btn" type="button" id="btnClear">Effacer les temps</button></div>
+    <div class="row"><button class="btn" type="button" id="btnResync">Refaire la synchro</button><button class="btn" type="button" id="btnRecalib">Recalibrer la caméra</button></div>
+    <button class="btn" type="button" id="btnClear">Effacer les temps</button>
     <div class="confirm" id="clearConfirm" hidden><span>Effacer tous les temps ?</span><button class="btn" type="button" id="btnClearYes">Effacer</button><button class="btn ghost" type="button" id="btnClearNo">Annuler</button></div>
     <button class="btn primary" value="close">Fermer</button>
   </form>

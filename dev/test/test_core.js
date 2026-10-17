@@ -59,6 +59,22 @@ function runDetect(buf, mf, minRatio = 8) {
   ok(det.length === 0, `aucune fausse détection sur bruit + claquements + voix (${det.length})`);
 }
 
+// 2b. Bips de contrôle (6,5–9,5 kHz, 60 ms) mêlés aux bips de synchro, chevauchements compris
+{
+  const hello = C.makeChirp(sr, 6500, 9500, 0.06), okc = C.makeChirp(sr, 9500, 6500, 0.06);
+  const mf = new C.MatchedFilter(sr, [{ name: 'up', data: up, group: 's' }, { name: 'down', data: dn, group: 's' }, { name: 'hello', data: hello, group: 'c' }, { name: 'ok', data: okc, group: 'c' }], 32768);
+  const len = sr * 14, buf = new Float32Array(len);
+  for (let i = 0; i < len; i++) buf[i] = 0.01 * gauss();
+  const truth = [];
+  for (let k = 0; k < 10; k++) { const t0 = 0.5 + k; truth.push({ t0, type: k === 0 ? 'down' : 'up' }); k === 0 ? renderChirp(buf, t0, 6000, 2000, 0.12, 0.05, sr) : renderChirp(buf, t0, 2000, 6000, 0.12, 0.05, sr); }
+  for (let k = 0; k < 8; k++) { const t0 = 0.55 + k * 1.5; const ty = k < 5 ? 'hello' : 'ok'; truth.push({ t0, type: ty }); ty === 'hello' ? renderChirp(buf, t0, 6500, 9500, 0.06, 0.6, sr) : renderChirp(buf, t0, 9500, 6500, 0.06, 0.6, sr); }
+  const det = runDetect(buf, mf);
+  let matched = 0, wrong = 0, maxErr = 0;
+  for (const tr of truth) { const d = det.find(x => x.type === tr.type && Math.abs(x.abs / sr - tr.t0) < 0.005); if (d) { matched++; maxErr = Math.max(maxErr, Math.abs(d.abs / sr - tr.t0) * 1000); } }
+  const extra = det.filter(x => !truth.some(tr => tr.type === x.type && Math.abs(x.abs / sr - tr.t0) < 0.005));
+  ok(matched === truth.length && extra.length === 0 && maxErr < 0.05, `synchro + contrôle mêlés : ${matched}/${truth.length}, ${extra.length} intrus ${extra.map(e => e.type + '@' + (e.abs / sr).toFixed(3)).join(' ')}, erreur max ${maxErr.toFixed(3)} ms`);
+}
+
 // 3. Attaque de claquement en présence de bips
 {
   const len = sr * 1, x = new Float32Array(len);
@@ -143,6 +159,15 @@ for (const c of [
     const e = gd.push(lum, tt); if (e && !ev) ev = e;
   }
   ok(ev && ev.dir === -1 && Math.abs(ev.t - tGate) < 3, `claquement main fixe : dir ${ev && ev.dir}, erreur vs ligne ${ev ? (ev.t - tGate).toFixed(2) : '—'} ms (contact à +${(tContact - tGate).toFixed(1)} ms)`);
+}
+
+{ // synchro avec deux marches de latence (+10 ms au bip 15, −6 ms au bip 30)
+  const s = new C.SyncFit(1000), off = 5000, rho = 31e-6;
+  const lvl = (k) => (k >= 15 ? 10 : 0) + (k >= 30 ? -6 : 0);
+  s.anchor(off + 0.05 * gauss());
+  for (let k = 1; k <= 45; k++) s.chirp(off + k * 1000 * (1 + rho) + lvl(k) + 0.05 * gauss());
+  const f = s.fit();
+  ok(f.n >= 40 && Math.abs(f.rhoPpm - 31) < 5 && Math.abs(f.h0 - (off + 4)) < 0.15 && s.shifts === 2, `synchro avec marches : ${f.n} points gardés, ${s.shifts} marches, dérive ${f.rhoPpm.toFixed(2)} ppm, niveau final ${(f.h0 - off).toFixed(2)} ms (attendu 4)`);
 }
 
 // 5. Synchro : dérive + bruit

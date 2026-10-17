@@ -98,6 +98,31 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .dots { display: flex; gap: 8px; } .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--sunk); border: 1px solid var(--line); }
 .dots i.on { background: var(--ok); border-color: var(--ok); }
 
+/* Appairage */
+.pair { display: grid; gap: 14px; padding-block: 8px 20px; }
+.pair-art { display: flex; align-items: center; justify-content: center; gap: 14px; padding-block: 18px 6px; }
+.pair-art .ph { width: 54px; height: 96px; border-radius: 12px; border: 3px solid var(--ink); position: relative; background: var(--surface); }
+.pair-art .ph::after { content: ""; position: absolute; left: 50%; top: 7px; width: 14px; height: 3px; border-radius: 2px; background: var(--ink); transform: translateX(-50%); }
+.pair-art .waves { display: flex; gap: 5px; align-items: center; }
+.pair-art .waves i { width: 4px; border-radius: 2px; background: var(--tartan); height: 14px; opacity: 0.25; }
+.pair-art .waves i:nth-child(2) { height: 26px; }
+#scrPrep[data-state="run"] .waves i { animation: wave 900ms ease-in-out infinite; }
+#scrPrep[data-state="run"] .waves i:nth-child(2) { animation-delay: 150ms; }
+#scrPrep[data-state="run"] .waves i:nth-child(3) { animation-delay: 300ms; }
+#scrPrep[data-state="ok"] .waves i { opacity: 1; background: var(--ok); }
+@keyframes wave { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.pair-h { font: 700 clamp(40px, 12vw, 64px)/0.92 var(--display); text-transform: uppercase; letter-spacing: 0.005em; }
+#scrPrep[data-state="ok"] .pair-h { color: var(--ok); }
+.pair-p { margin: 0; color: var(--muted); font-size: 16px; max-width: 36ch; }
+.prog { height: 10px; border-radius: 5px; background: var(--sunk); overflow: hidden; }
+.prog i { display: block; height: 100%; width: 0%; background: var(--tartan); border-radius: 5px; transition: width 300ms ease; }
+#scrPrep[data-state="ok"] .prog i { background: var(--ok); }
+.calib-help { margin: 6px 0 0; color: var(--ink); font-size: 15px; max-width: 40ch; }
+.check-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-top: 6px; border-top: 1px solid var(--line); margin-top: 4px; }
+.check-row .btn { flex: none; min-height: 44px; padding: 10px 14px; font-size: 15px; }
+.check-row .note { flex: 1 1 180px; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { #scrPrep[data-state="run"] .waves i { animation: none; opacity: 0.8; } .prog i { transition: none; } }
+
 /* Caméra */
 .cam { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 4 / 5; max-height: 46vh; width: 100%; max-width: 100%; margin-inline: auto; }
 .cam.small { aspect-ratio: 16 / 10; max-height: 30vh; }
@@ -179,37 +204,27 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     </div>
     <p class="note" id="homeErr" hidden></p>
     <details class="guide">
-      <summary>Préparer la séance (2 min)</summary>
+      <summary>Comment ça marche (1 min)</summary>
       <ol>
-        <li><b>Volume à fond</b> sur les deux téléphones, écouteurs Bluetooth déconnectés.</li>
-        <li>Ouvre <b>Arrivée</b> sur un téléphone, puis <b>Départ</b> sur l'autre. Pose-les <b>côte à côte</b> (10 cm).</li>
-        <li><b>Synchro</b> : sur le Départ, lance les bips. <b>Pendant les bips</b>, fais les 5 claquements de mains devant la caméra de l'Arrivée (et du Départ pour le mode Cellule). Attends « Synchro OK » sur l'Arrivée (30 à 60 s), puis Terminer.</li>
-        <li>Pose chaque téléphone <b>debout</b> et calé, au bord de la piste, caméra face à la piste, ligne rouge alignée sur la ligne au sol, à 3–8 m du couloir.</li>
-        <li><b>En fin de séance</b>, remets les téléphones côte à côte et fais « Synchro / contrôle » : la dérive est mesurée et les temps sont corrigés.</li>
+        <li><b>Volume à fond</b> sur les deux téléphones, verrouillage automatique de l'écran désactivé.</li>
+        <li>Ouvre <b>Arrivée</b> sur un téléphone, <b>Départ</b> sur l'autre, et pose-les <b>côte à côte</b>. Ils se synchronisent seuls (environ 30 s) puis passent à l'écran piste.</li>
+        <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée, puis <b>claque 3 fois des mains</b> devant elle : elle dit « Prêt ».</li>
+        <li>Va au départ et appuie sur <b>Lancer un départ</b>. Ton temps s'affiche et s'annonce à l'arrivée.</li>
+        <li>En fin de séance (ou toutes les 30 min), remets les téléphones côte à côte et appuie sur <b>Contrôler la synchro</b> sur le Départ : les temps sont corrigés.</li>
       </ol>
-      <p class="note">Désactive le verrouillage auto de l'écran, ne recharge pas la page et ne quitte pas l'app pendant la séance : la synchro serait perdue. Mode Cellule au départ : place la ligne rouge 50 cm devant ta ligne de départ pour que tes mains ne la déclenchent pas.</p>
+      <p class="note">Ne quitte pas l'app et ne recharge pas la page pendant la séance : la synchro serait perdue.</p>
     </details>
   </section>
 
-  <!-- Préparation -->
-  <section id="scrPrep" hidden>
-    <div class="steps">
-      <div class="step" id="stepSync">
-        <div class="step-h"><span class="n">1</span><h2>Synchro côte à côte</h2><span class="state" id="syncState">—</span></div>
-        <p id="syncHelp"></p>
-        <dl class="kv" id="syncKv"></dl>
-        <div class="row" id="syncBtns"></div>
-      </div>
-      <div class="step" id="stepClap">
-        <div class="step-h"><span class="n">2</span><h2>Calibrer la caméra</h2><span class="state" id="clapState">—</span></div>
-        <p id="clapHelp"></p>
-        <div class="cam small" id="camPrep"></div>
-        <div class="dots" id="clapDots"></div>
-        <dl class="kv" id="clapKv"></dl>
-        <button class="btn" id="btnClap">Commencer</button>
-      </div>
-      <button class="btn primary wide" id="btnToRun">Aller sur la piste</button>
-      <p class="note" id="prepNote"></p>
+  <!-- Appairage -->
+  <section id="scrPrep" hidden data-state="wait">
+    <div class="pair">
+      <div class="pair-art" aria-hidden="true"><span class="ph"></span><span class="waves"><i></i><i></i><i></i></span><span class="ph"></span></div>
+      <h2 class="pair-h" id="pairTitle">Appairage</h2>
+      <p class="pair-p" id="pairHelp"></p>
+      <div class="prog" role="progressbar" aria-label="Avancement de la synchro"><i id="pairBar"></i></div>
+      <dl class="kv" id="syncKv"></dl>
+      <div class="row" id="pairBtns"></div>
     </div>
   </section>
 
@@ -223,6 +238,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       <span class="lbl" id="bigLbl">Dernier temps</span>
       <div class="big num dim" id="big">—</div>
       <div class="sub" id="bigSub">&nbsp;</div>
+      <p class="calib-help" id="calibHelp" hidden></p>
     </div>
     <div class="cam" id="camRun"></div>
     <div class="ctl" id="ctl"></div>
@@ -238,13 +254,14 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
 <dialog id="dlgSettings">
   <form class="sheet" method="dialog" id="formSettings">
     <h2>Réglages</h2>
-    <div class="field"><label for="setRun">Distance de course (m)</label><input type="number" id="setRun" min="10" max="400" step="1" inputmode="numeric"><span class="hint">Sert à écarter les passages impossibles (trop rapides ou trop lents).</span></div>
+    <div class="field"><label for="setRun">Distance de course (m)</label><input type="number" id="setRun" min="10" max="400" step="1" inputmode="numeric"><span class="hint">Sert seulement à afficher ta vitesse moyenne.</span></div>
     <div class="field" data-for="start"><label for="setLead">Délai avant le départ au bip (s)</label><input type="number" id="setLead" min="15" max="90" step="1" inputmode="numeric"><span class="hint">Temps pour te placer. Le bip tombe toujours sur une minute ronde de l'horloge commune.</span></div>
     <div class="field" data-for="finish"><label for="setAth">Distance athlète ↔ téléphone Départ (m)</label><input type="number" id="setAth" min="0" max="10" step="0.5" inputmode="decimal"><span class="hint">Mode bip : corrige le temps que met le son à t'atteindre (3 ms par mètre).</span></div>
     <div class="field"><label for="setDir">Sens de passage pris en compte</label><select id="setDir"><option value="0">Les deux sens</option><option value="1">De gauche à droite (vu de l'écran)</option><option value="-1">De droite à gauche (vu de l'écran)</option></select></div>
     <label class="check" data-for="start"><input type="checkbox" id="setRearm"> Réarmer la cellule automatiquement</label>
     <label class="check"><input type="checkbox" id="setVoice"> Annonces vocales</label>
-    <div class="row"><button class="btn" type="button" id="btnResync">Synchro / contrôle</button><button class="btn" type="button" id="btnClear">Effacer les temps</button></div>
+    <div class="row"><button class="btn" type="button" id="btnResync">Refaire la synchro</button><button class="btn" type="button" id="btnRecalib">Recalibrer la caméra</button></div>
+    <button class="btn" type="button" id="btnClear">Effacer les temps</button>
     <div class="confirm" id="clearConfirm" hidden><span>Effacer tous les temps ?</span><button class="btn" type="button" id="btnClearYes">Effacer</button><button class="btn ghost" type="button" id="btnClearNo">Annuler</button></div>
     <button class="btn primary" value="close">Fermer</button>
   </form>
@@ -346,7 +363,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
           const w = k === 0 || k === N / 2 ? 1 : (k < N / 2 ? 2 : 0);
           hr[k] = hr[k] * w; hi[k] = -hi[k] * w;
         }
-        return { name: t.name, hr, hi, len: t.data.length, norm: Math.sqrt(energy) };
+        return { name: t.name, group: t.group || 'a', hr, hi, len: t.data.length, norm: Math.sqrt(energy) };
       });
       this.ms = sr / 1000;
     }
@@ -392,13 +409,13 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
           let frac = 0;
           const y0 = env[best - 1], y1 = env[best], y2 = env[best + 1], den = y0 - 2 * y1 + y2;
           if (den < 0) frac = Math.max(-0.5, Math.min(0.5, 0.5 * (y0 - y2) / den));
-          all.push({ type: t.name, idx: best + frac, ratio: bv / floor, snrDb: 20 * Math.log10(bv / floor), amp: bv / t.norm, sharp });
+          all.push({ type: t.name, group: t.group, idx: best + frac, ratio: bv / floor, snrDb: 20 * Math.log10(bv / floor), amp: bv / t.norm, sharp });
         }
       }
-      // dédoublonnage (corrélations croisées montée/descente) sur ±(L+10 ms), puis filtrage netteté + zone rendue
+      // dédoublonnage par bande de fréquence (corrélations croisées montée/descente) sur ±(L+10 ms), puis netteté + zone rendue
       all.sort((a, b) => b.ratio - a.ratio);
       const kept = [], win = this.L + 10 * ms;
-      for (const d of all) if (!kept.some(r => Math.abs(r.idx - d.idx) < win)) kept.push(d);
+      for (const d of all) if (!kept.some(r => r.group === d.group && Math.abs(r.idx - d.idx) < win)) kept.push(d);
       return kept.filter(d => d.sharp && d.idx >= M && d.idx < M + this.step).sort((a, b) => a.idx - b.idx);
     }
   }
@@ -628,55 +645,79 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
 
   // Côté Arrivée : bips de synchro (ancre = bip descendant, puis bips montants toutes les P ms, horloge du Départ).
   // Une ancre n'est adoptée qu'après 3 bips cohérents avec elle (évite qu'un faux bip décale toute la grille).
+  // Une marche de latence (décrochage audio) ouvre un nouveau segment : pente commune à tous les segments,
+  // ordonnée à l'origine propre à chacun ; h0 = niveau du segment courant. Aucun point n'est perdu.
   class SyncFit {
     constructor(periodMs = 1000) { this.P = periodMs; this.reset(); }
-    reset() { this.h0 = null; this.pts = []; this.cand = null; this.candPts = []; this.rej = []; this.shifts = 0; }
+    reset() { this.h0 = null; this.pts = []; this.cand = null; this.candPts = []; this.rej = []; this.shifts = 0; this.seg = 0; }
     anchor(h) {
       if (this.h0 !== null) { const f = this.fit(); const k = Math.round((h - f.h0) / f.b); if (k >= 0 && Math.abs(h - f.h0 - k * f.b) < 3) return 'same'; }
-      this.cand = h; this.candPts = [[0, h]]; return 'candidate';
+      this.cand = h; this.candPts = [[0, h, 0]]; return 'candidate';
     }
     chirp(h) {
-      let switched = false;
       if (this.cand !== null) {
         const k = Math.round((h - this.cand) / this.P), r = h - (this.cand + k * this.P);
         if (k >= 1 && Math.abs(r) < 3 + k * this.P * 2e-4) {
-          if (!this.candPts.some(p => p[0] === k)) this.candPts.push([k, h]);
-          if (this.candPts.length >= 3) { this.h0 = this.cand; this.pts = this.candPts.slice(); this.cand = null; this.candPts = []; switched = true; return { k, switched }; }
+          if (!this.candPts.some(p => p[0] === k)) this.candPts.push([k, h, 0]);
+          if (this.candPts.length >= 3) { this.h0 = this.cand; this.pts = this.candPts.slice(); this.seg = 0; this.rej = []; this.cand = null; this.candPts = []; return { k, switched: true }; }
         }
       }
       if (this.h0 === null) return { k: -1 };
       const f = this.fit();
       const k = Math.round((h - f.h0) / f.b), r = h - (f.h0 + k * f.b);
       if (k <= 0) return { k: -1 };
-      if (Math.abs(r) > 5) {
-        // décalage persistant (décrochage audio) : si 5 bips rejetés de suite sont cohérents entre eux, on repart d'eux
-        this.rej = (this.rej || []).concat([[k, h]]).slice(-5);
-        if (this.rej.length === 5) {
-          const g = linfit(this.rej.map(p => p[0]), this.rej.map(p => p[1]));
-          if (g.resid < 1 && Math.abs(g.b - f.b) < 0.05) { this.pts = this.rej.slice(); this.h0 = g.a; this.rej = []; this.shifts = (this.shifts || 0) + 1; return { k, shifted: true }; }
+      const thr = this.pts.length >= 8 ? Math.max(1.5, 6 * f.resid) : 5;
+      if (Math.abs(r) > thr) {
+        if (Math.abs(r) > 200) return { k: -1 };
+        this.rej.push([k, h, r]); if (this.rej.length > 6) this.rej.shift();
+        const last = this.rej.slice(-4);
+        if (last.length === 4 && new Set(last.map(x => x[0])).size === 4) {
+          const rs = last.map(x => x[2]);
+          if (Math.max(...rs) - Math.min(...rs) < 1.2) {
+            this.seg++; this.shifts++;
+            for (const x of last) if (!this.pts.some(q => q[0] === x[0])) this.pts.push([x[0], x[1], this.seg]);
+            this.rej = [];
+            return { k, shifted: true, step: median(rs) };
+          }
         }
         return { k: -1 };
       }
       this.rej = [];
       const e = this.pts.findIndex(p => p[0] === k);
-      if (e >= 0) { if (Math.abs(r) < Math.abs(this.pts[e][1] - (f.h0 + k * f.b))) this.pts[e] = [k, h]; return { k, dup: true }; }
-      this.pts.push([k, h]); return { k, switched };
+      if (e >= 0) { if (Math.abs(r) < Math.abs(this.pts[e][1] - (f.h0 + k * f.b))) this.pts[e] = [k, h, this.seg]; return { k, dup: true }; }
+      this.pts.push([k, h, this.seg]); return { k };
     }
     get ready() { return this.h0 !== null; }
+    _pooled(pts) {
+      const segs = new Map();
+      for (const p of pts) { const sg = p[2] || 0; if (!segs.has(sg)) segs.set(sg, []); segs.get(sg).push(p); }
+      let sxx = 0, sxy = 0; const mean = new Map();
+      for (const [sg, arr] of segs) {
+        let mk = 0, mh = 0; for (const p of arr) { mk += p[0]; mh += p[1]; } mk /= arr.length; mh /= arr.length;
+        mean.set(sg, [mk, mh]);
+        for (const p of arr) { sxx += (p[0] - mk) ** 2; sxy += (p[0] - mk) * (p[1] - mh); }
+      }
+      const b = sxx > 0 ? sxy / sxx : this.P, a = new Map();
+      for (const [sg, [mk, mh]] of mean) a.set(sg, mh - b * mk);
+      let ss = 0; for (const p of pts) { const r = p[1] - a.get(p[2] || 0) - b * p[0]; ss += r * r; }
+      const dof = pts.length - 1 - segs.size, resid = dof > 0 ? Math.sqrt(ss / dof) : 0;
+      let lastSeg = -1; for (const sg of segs.keys()) if (sg > lastSeg) lastSeg = sg;
+      return { b, a, aLast: a.get(this.seg) ?? a.get(lastSeg), resid, seB: sxx > 0 ? resid / Math.sqrt(sxx) : Infinity, r: (p) => p[1] - a.get(p[2] || 0) - b * p[0] };
+    }
     fit() {
       if (this.h0 === null || this.pts.length < 1) return null;
       if (this.pts.length < 3) return { h0: this.h0, b: this.P, rhoPpm: 0, resid: 0, n: this.pts.length, spanS: 0, err30: Infinity };
-      let pts = this.pts.slice();
-      let f = linfit(pts.map(p => p[0]), pts.map(p => p[1]));
+      let pts = this.pts.slice(), f = this._pooled(pts);
       for (let it = 0; it < 2 && pts.length > 5; it++) {
-        const r = pts.map(p => Math.abs(p[1] - f.a - f.b * p[0]));
+        const r = pts.map(p => Math.abs(f.r(p)));
         const lim = Math.max(0.6, 4 * median(r));
         const keep = pts.filter((p, i) => r[i] <= lim);
         if (keep.length === pts.length || keep.length < 4) break;
-        pts = keep; f = linfit(pts.map(p => p[0]), pts.map(p => p[1]));
+        pts = keep; f = this._pooled(pts);
       }
-      const kmax = Math.max(...pts.map(p => p[0]));
-      return { h0: f.a, b: f.b, rhoPpm: (f.b / this.P - 1) * 1e6, resid: f.resid, n: pts.length, spanS: kmax * this.P / 1000,
+      if (!isFinite(f.aLast)) return { h0: this.h0, b: this.P, rhoPpm: 0, resid: 0, n: pts.length, spanS: 0, err30: Infinity };
+      const kmax = Math.max(...pts.map(p => p[0])), kmin = Math.min(...pts.map(p => p[0]));
+      return { h0: f.aLast, b: f.b, rhoPpm: (f.b / this.P - 1) * 1e6, resid: f.resid, n: pts.length, spanS: (kmax - kmin) * this.P / 1000,
         err30: f.seB / this.P * 1800000 }; // incertitude (1σ) sur l'horloge commune après 30 min, en ms
     }
   }
@@ -705,7 +746,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   const P = 1000;                       // période des bips de synchro (ms, horloge du Départ)
   const MS_PER_M = 1000 / CC.SOUND_SPEED;
   const D_SYNC_M = 0.1, D_CLAP_M = 0.35, D_SELF_M = 0.08;
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
 
   // ---------------- utilitaires ----------------
   const $ = (s) => document.querySelector(s);
@@ -740,8 +781,9 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     syncGen: 0, lastRes: null, lastCheck: null,
   };
   const saveSettings = () => store.set('settings', S.settings);
-  const tMin = () => Math.max(1500, S.settings.runDist / 12.5 * 1000);
-  const tMax = () => Math.min(S.mode === 'bip' ? 59000 : 99000, Math.max(tMin() + 2000, S.settings.runDist / 2.5 * 1000));
+  // temps acceptés : de 1,5 s à 59 s (la distance ne sert qu'à afficher la vitesse)
+  const tMin = () => 1500;
+  const tMax = () => S.mode === 'bip' ? 59000 : 99000;
 
   // ---------------- voix ----------------
   const Voice = {
@@ -778,7 +820,9 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       this.sr = this.ctx.sampleRate;
       const sr = this.sr;
       const mkBuf = (data) => { const b = this.ctx.createBuffer(1, data.length, sr); b.getChannelData(0).set(data); return b; };
-      const T = { down: CC.makeChirp(sr, 6000, 2000, 0.12), up: CC.makeChirp(sr, 2000, 6000, 0.12), gun: CC.makeGun(sr, 0.16) };
+      // synchro : balayages 2–6 kHz (120 ms) ; signaux d'appairage : 6,5–9,5 kHz (60 ms), autre bande donc sans confusion
+      const T = { down: CC.makeChirp(sr, 6000, 2000, 0.12), up: CC.makeChirp(sr, 2000, 6000, 0.12), hello: CC.makeChirp(sr, 6500, 9500, 0.06), ok: CC.makeChirp(sr, 9500, 6500, 0.06), gun: CC.makeGun(sr, 0.16) };
+      const G = { down: 's', up: 's', hello: 'c', ok: 'c', gun: 'g' };
       for (const k in T) BUF[k] = mkBuf(T[k]);
       BUF.cue = mkBuf((() => { const n = Math.round(0.12 * sr), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = 0.5 * Math.sin(2 * Math.PI * 880 * i / sr) * Math.min(1, i / 200, (n - i) / 200); return a; })());
       // signal quasi inaudible en boucle : garde la sortie audio active (latence stable)
@@ -803,9 +847,9 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
         sp.onaudioprocess = (e) => this._push(Math.round(e.playbackTime * sr), new Float32Array(e.inputBuffer.getChannelData(0)));
         src.connect(sp); sp.connect(sink); this.capMode = 'script';
       }
-      this.mf = new CC.MatchedFilter(sr, tplNames.map(n => ({ name: n, data: T[n] })), 32768);
+      this.mf = new CC.MatchedFilter(sr, tplNames.map(n => ({ name: n, data: T[n], group: G[n] })), 32768);
       this.blk = new Float32Array(this.mf.N);
-      this.ctx.onstatechange = () => { if (this.ctx.state !== 'running') { this.interrupted = true; if (S.role === 'start' || Listen.active || Clap.active) { S.warnings.add('audio'); renderBanners(); } } };
+      this.ctx.onstatechange = () => { if (this.ctx.state !== 'running') { this.interrupted = true; if (S.s0 != null || S.fit) { S.warnings.add('audio'); renderBanners(); } } };
       this.stream.getAudioTracks()[0].onended = () => { S.warnings.add('audio'); renderBanners(); };
       // méthode de correspondance horloge audio ↔ performance.now(), choisie une fois
       await new Promise(r => setTimeout(r, 250));
@@ -905,7 +949,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
         for (let i = 0; i < N; i++) b[i] = this.ring[(s + i) & this.mask];
         const dets = this.mf.process(b, { minRatio: 8 });
         for (const d of dets) {
-          const frame = s + d.idx, det = { type: d.type, frame, perf: this.perfOfFrame(frame), snr: d.snrDb };
+          const frame = s + d.idx, det = { type: d.type, frame, perf: this.perfOfFrame(frame), snr: d.snrDb, amp: d.amp };
           this.dets.push(det); if (this.dets.length > 60) this.dets.shift();
           if (this.onDet) this.onDet(det);
         }
@@ -992,13 +1036,42 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     config(o) { if (this.det) Object.assign(this.det.o, o); else this._pendingO = o; },
   };
 
+  const CTL_GAIN = 0.35;
+
+  // ---------------- appairage (signaux courts 6,5–9,5 kHz) ----------------
+  // L'Arrivée émet « hello » tant qu'elle n'a pas l'ancre de synchro ; le Départ démarre ses bips en l'entendant.
+  // Quand la synchro est bonne, l'Arrivée émet « ok » ×3 ; le Départ s'arrête et les deux passent à l'écran piste.
+  const Pair = {
+    timer: null,
+    startHello() {
+      this.stopHello();
+      const tick = () => {
+        const sf = Listen.sf;
+        if (S.role === 'finish' && Listen.active && Listen.mode === 'sync' && !sf.ready && (sf.cand === null || now() - Listen.candAt > 5000)) Audio.play(BUF.hello, now() + 40, CTL_GAIN);
+      };
+      this.timer = setInterval(tick, 1500); tick();
+    },
+    stopHello() { if (this.timer) clearInterval(this.timer); this.timer = null; },
+    sendOk() { for (let i = 0; i < 3; i++) Audio.play(BUF.ok, now() + 60 + i * 350, CTL_GAIN); },
+  };
+
   // ---------------- Départ : bips de synchro ----------------
   const Emit = {
-    active: false, checking: false, k: 0, sched: new Map(), Rs: [], timer: null, count: 0,
-    _run() { if (this.timer) clearInterval(this.timer); this.timer = setInterval(() => this._tick(), 150); this._tick(); renderPrep(); },
+    active: false, checking: false, k: 0, sched: new Map(), Rs: [], timer: null, count: 0, startedAt: 0, helloAt: [], okAt: [],
+    _run() {
+      if (this.timer) clearInterval(this.timer);
+      this.startedAt = now();
+      this.timer = setInterval(() => {
+        this._tick();
+        if (now() - this.startedAt > (this.checking ? 60000 : 120000)) { this.stop(); flashNote('Bips arrêtés : l\'Arrivée n\'a pas répondu.'); renderRun(); }
+        renderPrep();
+      }, 150);
+      this._tick(); renderPrep(); renderRun();
+    },
     start() { // nouvelle synchro : nouvelle grille
       this.stop(); this.active = true; this.checking = false; this.k = 0; this.sched.clear(); this.Rs = []; this.count = 0;
-      S.s0 = Math.round(now() + 900); S.R = null; S.Rspread = null; S.prevR = null; S.starts = []; S.D = null; S.Dspread = null; Clap.vals = []; S.syncGen++;
+      S.s0 = Math.round(now() + 900); S.R = null; S.Rspread = null; S.prevR = null; S.starts = []; S.syncGen++;
+      if (S.warnings.has('audio')) S.D = null;
       S.warnings.delete('clock'); S.warnings.delete('audio'); S.warnings.delete('drift-audio'); renderBanners();
       this._run();
     },
@@ -1012,74 +1085,105 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       const t = now();
       while (S.s0 + this.k * P < t + 1000) {
         const p = S.s0 + this.k * P, r = Audio.play(this.k === 0 ? BUF.down : BUF.up, p, 0.45);
-        if (!r.late) this.sched.set(this.k, p);
+        if (!r.late) this.sched.set(this.k, { p, src: r.src });
         this.k++; this.count++;
       }
-      for (const [k, p] of this.sched) if (t - p > 3000) this.sched.delete(k);
+      for (const [k, e] of this.sched) if (t - e.p > 3000) this.sched.delete(k);
     },
-    stop() { if (this.timer) clearInterval(this.timer); this.timer = null; this.active = false; },
+    stop() {
+      if (this.timer) clearInterval(this.timer); this.timer = null; this.active = false; this.checking = false;
+      const t = now(); for (const e of this.sched.values()) if (e.p > t + 30) { try { e.src.stop(); } catch (x) { } } // bips déjà programmés
+    },
     onDet(d) {
       if (d.type === 'gun') return Go.onOwnGun(d);
-      for (const [k, p] of this.sched) {
-        const r = d.perf - p;
+      if (d.type === 'hello') return this._onHello();
+      if (d.type === 'ok') return this._onOk();
+      for (const [k, e] of this.sched) {
+        const r = d.perf - e.p;
         if (r > -5 && r < 600) { this.Rs.push(r); this.sched.delete(k); break; }
       }
       if (this.Rs.length > 60) this.Rs.shift();
       // latence propre modifiée pendant la synchro (décrochage audio) : on ne garde que les mesures récentes
       if (this.Rs.length >= 9) {
         const last = this.Rs.slice(-5), dm = CC.median(last) - CC.median(this.Rs.slice(0, -5));
-        if (Math.abs(dm) > 2 && CC.mad(last) < 0.7) {
-          this.Rs = last;
-          if (!this.checking && (S.D != null || Clap.vals.length)) { S.D = null; Clap.vals = []; flashPrep('Latence audio modifiée pendant la synchro : refais les claquements.'); }
-        }
+        if (Math.abs(dm) > 2 && CC.mad(last) < 0.7) this.Rs = last;
       }
       if (this.Rs.length >= 3) { S.R = CC.median(this.Rs); S.Rspread = CC.mad(this.Rs); }
-      renderPrep();
+    },
+    _onHello() {
+      const t = now(); this.helloAt = this.helloAt.filter(x => t - x < 4000); this.helloAt.push(t);
+      if (Go.p) return;
+      if (this.active && !this.checking && t - this.startedAt < 5000) return; // l'Arrivée n'a pas encore entendu le début
+      if (S.screen === 'prep' || this.helloAt.length >= 2) { // l'Arrivée attend (ou a perdu sa synchro) : on (re)lance
+        this.start(); if (S.screen !== 'prep') show('prep');
+      }
+    },
+    _onOk() {
+      const t = now(); this.okAt = this.okAt.filter(x => t - x < 2500); this.okAt.push(t);
+      if (!this.active || this.okAt.length < 2) return;
+      const wasCheck = this.checking; this.stop(); this.okAt = [];
+      if (S.screen === 'prep') { Audio.beep(1); show('run'); }
+      else { Audio.beep(1); renderRun(); flashNote(wasCheck ? 'Contrôle fait : l\'Arrivée a recalé l\'horloge et corrigé ses temps.' : 'Synchro OK.'); }
     },
   };
 
   // ---------------- Arrivée : écoute de la synchro ----------------
   const Listen = {
-    active: false, mode: 'sync', sf: new CC.SyncFit(P), sfNew: null, anchorSeen: false, chk: [], chkRes: null,
-    start() { // nouvelle synchro complète
-      this.active = true; this.mode = 'sync'; this.sf = new CC.SyncFit(P); this.sfNew = null; this.anchorSeen = false; this.chk = []; this.chkRes = null;
-      S.fit = null; S.D = null; S.Dspread = null; Clap.vals = []; S.syncGen++; S.lastCheck = null;
-      S.warnings.delete('clock'); S.warnings.delete('audio'); renderBanners(); renderPrep();
-    },
-    startCheck() { if (!S.fit) return this.start(); this.active = true; this.mode = 'check'; this.sfNew = null; this.chk = []; this.chkRes = null; renderPrep(); },
-    stop() { this.active = false; },
-    onDet(d) {
-      if (!this.active) return;
-      if (this.mode !== 'sync') return this._check(d);
-      if (d.type === 'down') { this.anchorSeen = true; this.sf.anchor(d.perf); }
-      else if (d.type === 'up') {
-        const r = this.sf.chirp(d.perf);
-        if (r.shifted && (S.D != null || Clap.vals.length)) { S.D = null; Clap.vals = []; flashPrep('Décalage audio détecté pendant la synchro : refais les 5 claquements.'); }
-      }
-      const f = this.sf.fit(); if (f) S.fit = f;
+    active: false, mode: 'sync', sf: new CC.SyncFit(P), sfNew: null, chk: [], chkRes: null, candAt: 0, okSent: false, amps: [], cooldownUntil: 0,
+    start(o = {}) { // nouvelle synchro (écran d'appairage)
+      this.active = true; this.mode = 'sync'; this.sf = o.sf || new CC.SyncFit(P); this.sfNew = null; this.chk = []; this.chkRes = null;
+      this.candAt = now(); this.okSent = false; this.amps = o.amps || [];
+      S.fit = this.sf.fit(); S.syncGen++; S.lastCheck = null; S.lastRes = null;
+      if (S.warnings.has('audio')) S.D = null;
+      S.warnings.delete('clock'); S.warnings.delete('audio'); renderBanners();
+      if (o.hello !== false) Pair.startHello();
       renderPrep();
     },
-    _check(d) {
-      if (this.mode === 'checked') return;
-      if (d.type === 'down') { this.sfNew = new CC.SyncFit(P); this.sfNew.anchor(d.perf); return; }
+    watch() { this.mode = 'watch'; this.chk = []; this.sfNew = null; Pair.stopHello(); },
+    stop() { this.active = false; Pair.stopHello(); },
+    onDet(d) {
+      if (!this.active || d.type === 'hello' || d.type === 'ok') return; // nos propres signaux
+      if (this.mode === 'watch') return this._watch(d);
+      if (d.type === 'down') { this.sf.anchor(d.perf); this.candAt = now(); }
+      else if (d.type === 'up') { const r = this.sf.chirp(d.perf); if (r.k > 0 && d.amp) { this.amps.push(d.amp); if (this.amps.length > 60) this.amps.shift(); } }
+      const f = this.sf.fit(); if (f) S.fit = f;
+      if (!this.okSent && this.status() === 'ok') this._done();
+      renderPrep();
+    },
+    _done() {
+      this.okSent = true; S.syncAmp = this.amps.length ? CC.median(this.amps) : null;
+      Pair.stopHello(); Pair.sendOk(); this.cooldownUntil = now() + 10000;
+      setTimeout(() => { if (S.role === 'finish' && this.mode === 'sync') { this.watch(); if (S.screen === 'prep') show('run'); } }, 1400);
+    },
+    _watch(d) { // écran piste : écoute passive (contrôle de fin de séance, ou nouvelle synchro lancée sur le Départ)
+      const t = now();
+      if (d.type === 'down') { this.sfNew = new CC.SyncFit(P); this.sfNew.anchor(d.perf); this.newAmps = []; return; }
       if (d.type !== 'up') return;
-      if (this.sfNew) { // le Départ a lancé une nouvelle synchro au lieu d'un contrôle
-        this.sfNew.chirp(d.perf);
-        if (this.sfNew.ready) { const sf = this.sfNew; this.start(); this.anchorSeen = true; this.sf = sf; S.fit = sf.fit(); renderPrep(); return; }
+      if (this.sfNew) {
+        this.sfNew.chirp(d.perf); if (d.amp) this.newAmps.push(d.amp);
+        if (this.sfNew.ready) { const sf = this.sfNew; this.start({ sf, amps: this.newAmps, hello: false }); this.candAt = now(); show('prep'); return; }
       }
+      if (t < this.cooldownUntil) return;
       const f = S.fit; if (!f) return;
+      if (S.syncAmp && !(d.amp >= 0.25 * S.syncAmp)) return; // trop faible : les téléphones ne sont pas côte à côte
       const k = Math.round((d.perf - f.h0) / f.b), r = d.perf - (f.h0 + k * f.b);
       if (k <= 0 || Math.abs(r) > 80 || this.chk.some(c => c[0] === k)) return;
       this.chk.push([k, d.perf, r]);
+      if (this.chk.length > 20) this.chk.shift();
       if (this.chk.length >= 8) {
         const rs = this.chk.map(c => c[2]), med = CC.median(rs), mad = CC.mad(rs);
-        if (mad < 1) { this.chkRes = { r: med, mad, n: this.chk.length, min: CC.median(this.chk.map(c => c[0])) * P / 60000 }; this._apply(); }
+        if (mad < 1) {
+          this.chkRes = { r: med, mad, n: this.chk.length, min: CC.median(this.chk.map(c => c[0])) * P / 60000 };
+          this._apply(); Pair.sendOk(); this.chk = []; this.cooldownUntil = t + 20000;
+          const lc = S.lastCheck;
+          if (lc.min >= 3) flashNote(`Contrôle : dérive de ${fmt.ms1(Math.abs(lc.r))} ms en ${Math.round(lc.min)} min, corrigée${lc.fixed ? ` sur ${lc.fixed} temps` : ''}.`);
+          renderList(); renderChips();
+        }
       }
-      renderPrep();
     },
     _apply() { // droite recalculée sur toute la séance, puis correction des temps déjà enregistrés
       const c = this.chkRes, good = this.chk.filter(x => Math.abs(x[2] - c.r) <= 3 * Math.max(0.3, c.mad));
-      this.sf.pts = this.sf.pts.concat(good.map(x => [x[0], x[1]]));
+      this.sf.pts = this.sf.pts.concat(good.map(x => [x[0], x[1], this.sf.seg])); // même segment : l'écart est traité comme une dérive
       const nf = this.sf.fit(); S.fit = nf;
       let fixed = 0;
       for (const res of S.results) if (res.gen === S.syncGen && res.raw != null) {
@@ -1088,52 +1192,59 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
       }
       store.set('results', S.results);
       S.lastCheck = { r: c.r, min: c.min, fixed };
-      this.mode = 'checked';
     },
     status() {
       const f = S.fit;
-      if (this.mode !== 'sync') return f ? 'ok' : 'wait';
-      if (!f) return this.anchorSeen ? 'anchor' : (this.sf.cand !== null || this.sf.pts.length ? 'anchor' : 'wait');
-      if (f.n >= 15 && f.err30 <= 3 && f.resid <= 0.6) return 'ok';
+      if (!f) return this.sf.cand !== null || this.sf.pts.length ? 'anchor' : 'wait';
+      if (this.mode === 'watch') return 'ok';
+      if ((f.n >= 15 && f.err30 <= 4 && f.resid <= 0.6) || (f.n >= 40 && f.resid <= 1)) return 'ok';
       return 'progress';
+    },
+    progress() {
+      const f = S.fit; if (!f || f.n < 2) return this.sf.cand !== null ? 0.05 : 0;
+      if (this.status() === 'ok') return 1;
+      return Math.min(0.97, Math.max(f.n / 40, Math.min(f.n / 15, isFinite(f.err30) ? Math.max(0.1, Math.min(1, 4 / f.err30)) : 0.1)));
     },
   };
 
-  // ---------------- calibration caméra (claquement) ----------------
+  // ---------------- calibration caméra : 3 claquements sur la ligne, téléphone en place ----------------
   const Clap = {
-    active: false, vals: [], pending: [], timer: null,
+    active: false, vals: [], pending: [], timer: null, N: 3,
     start() {
       this.active = true; this.vals = []; this.pending = []; S.D = null; S.Dspread = null;
       Cam.config({ dir: 0, cooldownMs: 700, clearMs: 250, band: null }); if (Cam.det) Cam.det.armed = true;
       if (this.timer) clearInterval(this.timer);
-      this.timer = setInterval(() => this._poll(), 100); renderPrep();
+      this.timer = setInterval(() => this._poll(), 100); renderRun(); renderChips();
     },
-    stop() { this.active = false; if (this.timer) clearInterval(this.timer); this.timer = null; applyGateConfig(); renderPrep(); },
+    stop() { this.active = false; if (this.timer) clearInterval(this.timer); this.timer = null; applyGateConfig(); renderRun(); renderChips(); },
     onGate(ev) { this.pending.push(ev.t); },
     _poll() {
-      const sr = Audio.sr;
+      const sr = Audio.sr, n0 = this.vals.length;
       this.pending = this.pending.filter(t => {
         const w = Audio.window(t - 450, t + 150);
         if (!w) return now() - t < 3000;
         if (w.gone) return false;
-        // les bips de synchro (2–6 kHz, 120 ms) sont exclus de la recherche du claquement
         const excl = Audio.dets.filter(d => d.frame > w.f0 - 0.2 * sr && d.frame < w.f0 + w.data.length).map(d => [d.frame - w.f0 - 0.006 * sr, d.frame - w.f0 + 0.13 * sr]);
         const r = CC.detectClapOnset(w.data, sr, excl);
         if (r) { const Dp = t - Audio.perfOfFrame(w.f0 + r.idx); if (Dp > -80 && Dp < 400) this.vals.push(Dp); }
         return false;
       });
-      if (this.vals.length >= 5) {
-        const med = CC.median(this.vals), dev = this.vals.map(v => Math.abs(v - med));
-        const best = this.vals.map((v, i) => [v, dev[i]]).sort((a, b) => a[1] - b[1]).slice(0, 5).map(x => x[0]);
+      if (this.vals.length >= this.N) {
+        const med = CC.median(this.vals);
+        const best = this.vals.map(v => [v, Math.abs(v - med)]).sort((a, b) => a[1] - b[1]).slice(0, this.N).map(x => x[0]);
         const spread = Math.max(...best) - Math.min(...best);
-        if (spread <= 12 || this.vals.length >= 9) {
+        if (spread <= 8 || this.vals.length >= 7) {
           S.D = CC.median(best) + D_CLAP_M * MS_PER_M; S.Dspread = spread; S.camRestartsAtClap = Cam.restarts;
-          this.stop(); return;
+          this.stop(); Audio.beep(2);
+          showBig('Prêt', S.role === 'finish' ? 'Calibré. Le temps s\'affichera ici à ton passage.' : 'Calibré. Arme la cellule.', 'Caméra calibrée');
+          Voice.say('Prêt');
+          return;
         }
       }
-      renderPrep();
+      if (this.vals.length !== n0) { Audio.beep(1); renderRun(); }
     },
   };
+  const needCalib = () => S.role === 'finish' || S.mode === 'cell';
 
   // ---------------- Départ : départ au bip programmé ----------------
   const Go = {
@@ -1195,7 +1306,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     if (S.mode === 'bip') {
       const g = CC.gridResult(tau, tMin()), T = g.T - S.settings.athDist * MS_PER_M;
       const walking = isFinite(ev.speed) && ev.speed < 2.5;
-      if (T < tMin() || T > tMax() || walking) { flashNote(walking ? 'Passage ignoré (trop lent).' : 'Passage ignoré (hors des temps possibles pour ' + S.settings.runDist + ' m).'); return; }
+      if (T < tMin() || T > tMax() || walking) { flashNote(walking ? 'Passage ignoré (trop lent).' : 'Passage ignoré (aucun départ donné dans la minute).'); return; }
       const extra = S.lastRes && S.lastRes.n === g.n && S.lastRes.gen === S.syncGen;
       const r = { T, mode: 'bip', dist: S.settings.runDist, at: Date.now(), calib: S.D != null, raw, n: g.n, ath: S.settings.athDist, gen: S.syncGen, extra, torso: ev.torso };
       addResult(r);
@@ -1232,7 +1343,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     return false;
   }
   function applyGateConfig() {
-    if (!Cam.det) return;
+    if (!Cam.det || Clap.active) return;
     const band = [0.18, 0.48];
     if (S.role === 'finish') { Cam.config({ dir: +S.settings.dir, cooldownMs: 1500, clearMs: 300, band }); Cam.det.armed = true; }
     else { Cam.config({ dir: +S.settings.dir, cooldownMs: 2500, clearMs: 400, band }); if (S.mode !== 'cell') Cam.det.armed = false; }
@@ -1240,92 +1351,61 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
 
   // ---------------- rendu ----------------
   let noteTimer = null;
-  function flashNote(t) { const e = $('#runNote'); e.textContent = t; clearTimeout(noteTimer); noteTimer = setTimeout(() => { e.textContent = ''; }, 6000); }
+  function flashNote(t) { const e = $('#runNote'); if (!e) return; e.textContent = t; clearTimeout(noteTimer); noteTimer = setTimeout(() => { e.textContent = ''; }, 7000); }
   function renderChips() {
     const c = $('#chips'); if (!S.started) return;
     const chips = [];
     if (S.role === 'finish') {
       const st = Listen.status();
-      chips.push(S.fit && st === 'ok' ? ['ok', 'Synchro ±' + fmt.ms1(Math.max(0.1, S.fit.err30)) + ' ms'] : S.fit ? ['warn', 'Synchro partielle'] : ['bad', 'Pas de synchro']);
-    } else chips.push(S.s0 != null && S.R != null ? ['ok', 'Synchro émise'] : ['bad', 'Pas de synchro']);
-    chips.push(S.D != null ? ['ok', 'Caméra calibrée'] : [S.role === 'finish' || S.mode === 'cell' ? 'warn' : '', 'Caméra non calibrée']);
+      chips.push(S.fit && st === 'ok' ? ['ok', 'Synchro ±' + fmt.ms1(Math.max(0.1, S.fit.err30)) + ' ms'] : S.fit ? ['warn', 'Synchro en cours'] : ['bad', 'Pas de synchro']);
+    } else chips.push(Emit.active ? ['warn', Emit.checking ? 'Contrôle en cours' : 'Synchro en cours'] : S.s0 != null ? ['ok', 'Synchro faite'] : ['bad', 'Pas de synchro']);
+    if (needCalib()) chips.push(S.D != null ? ['ok', 'Caméra calibrée'] : ['warn', 'Caméra à calibrer']);
     chips.push([Cam.fps >= 50 ? 'ok' : Cam.fps >= 24 ? '' : 'bad', Math.round(Cam.fps) + ' i/s']);
     c.replaceChildren(...chips.map(([k, t]) => mk('span', 'chip ' + k, t)));
   }
   function renderBanners() {
     const b = $('#banners'), items = [];
-    if (S.warnings.has('clock')) items.push(['bad', 'Horloge interrompue (mise en veille ou rechargement) : refais la synchro.']);
-    if (S.warnings.has('audio')) items.push(['bad', 'Le son a été interrompu : refais la synchro.']);
+    if (S.warnings.has('clock')) items.push(['bad', 'Horloge interrompue (mise en veille ou appli quittée) : remets les téléphones côte à côte, Réglages → Refaire la synchro.']);
+    if (S.warnings.has('audio')) items.push(['bad', 'Le son a été interrompu : remets les téléphones côte à côte, Réglages → Refaire la synchro.']);
     if (S.warnings.has('camera')) items.push(['bad', 'La caméra s\'est arrêtée : recharge la page puis refais la synchro.']);
     if (S.warnings.has('late')) items.push(['bad', 'Le bip est parti en retard (téléphone surchargé) : ce départ n\'est pas fiable.']);
     if (S.warnings.has('drift-audio')) items.push(['', `Le dernier bip de départ est parti avec ${fmt.ms1(Math.abs(S.lastRgoDiff || 0))} ms d'écart : ce temps peut être faussé d'autant. Fais un contrôle de synchro.`]);
-    if (S.D != null && Cam.restarts > (S.camRestartsAtClap || 0)) items.push(['', 'La caméra a redémarré : refais la calibration caméra.']);
+    if (S.D != null && Cam.restarts > (S.camRestartsAtClap || 0)) items.push(['', 'La caméra a redémarré : Réglages → Recalibrer la caméra.']);
     b.replaceChildren(...items.map(([k, t]) => mk('div', 'banner ' + k, t)));
   }
   function kv(el, pairs) { el.replaceChildren(...pairs.map(([k, v]) => { const d = mk('div'); d.append(mk('dt', null, k), mk('dd', null, v)); return d; })); }
   function renderPrep() {
     if (S.screen !== 'prep') return;
-    const btns = $('#syncBtns'); btns.replaceChildren();
-    const stEl = $('#syncState'), help = $('#syncHelp');
+    const btns = $('#pairBtns'); btns.replaceChildren();
     const btn = (label, cls, fn) => { const b = mk('button', 'btn ' + cls, label); b.onclick = fn; btns.append(b); return b; };
-    let syncOk = false, bipsOn = false;
+    let title, help, prog, pairs, state = '';
     if (S.role === 'start') {
-      bipsOn = Emit.active;
-      if (Emit.active) help.textContent = Emit.checking
-        ? 'Contrôle : garde les deux téléphones côte à côte une quinzaine de secondes, jusqu\'à ce que l\'Arrivée affiche le résultat. Puis Terminer.'
-        : 'Garde les deux téléphones côte à côte. Fais l\'étape 2 pendant les bips si tu utilises le mode Cellule. Terminer quand l\'Arrivée affiche « Synchro OK ».';
-      else help.textContent = S.s0 == null
-        ? 'Pose ce téléphone à 10 cm de l\'Arrivée (ouverte sur cet écran), volume à fond, puis lance les bips.'
-        : 'Synchro en mémoire. Fais un contrôle en fin de séance (ou toutes les 30 min) : l\'Arrivée corrige alors les temps.';
-      const pairs = [['Bips émis', Emit.active || S.s0 != null ? String(Emit.count) : '—'], ['Latence son', S.R != null ? fmt.ms1(S.R) + ' ms' : '—']];
-      if (Emit.checking && S.prevR != null) pairs.push(['Latence au départ', fmt.ms1(S.prevR) + ' ms']); else pairs.push(['Stabilité', S.Rspread != null ? '±' + fmt.ms1(S.Rspread) + ' ms' : '—']);
-      kv($('#syncKv'), pairs);
-      syncOk = S.s0 != null && !Emit.active;
-      stEl.textContent = Emit.active ? (Emit.checking ? 'Contrôle' : 'Émission') : syncOk ? 'Faite' : 'À faire';
-      stEl.className = 'state ' + (syncOk ? 'ok' : Emit.active ? 'warn' : '');
-      if (Emit.active) btn('Terminer', '', () => { Emit.stop(); if (S.R == null) flashPrep('Ce téléphone ne s\'est pas entendu : vérifie le volume et le micro. Le mode bip reste utilisable si l\'Arrivée affiche « Synchro OK ».'); renderPrep(); });
-      else if (S.s0 == null) btn('Lancer les bips', 'primary', () => Emit.start());
-      else { btn('Contrôler la synchro', 'primary', () => Emit.resume()); btn('Nouvelle synchro', '', () => Emit.start()); }
+      if (!Emit.active) {
+        title = 'En attente de l\'Arrivée'; prog = 0; state = 'wait';
+        help = 'Pose ce téléphone à 10 cm de l\'autre, volume à fond, et ouvre « Arrivée » dessus. La synchro démarre toute seule.';
+        btn('Lancer les bips moi-même', 'ghost', () => Emit.start());
+      } else {
+        title = 'Synchronisation…'; state = 'run';
+        prog = Math.min(0.95, (now() - Emit.startedAt) / 30000);
+        help = 'Ne bouge pas les téléphones. Ça s\'arrête tout seul quand l\'Arrivée a fini (environ 30 s).';
+        btn('Arrêter', 'ghost', () => { Emit.stop(); renderPrep(); });
+      }
+      pairs = [['Bips émis', String(Emit.count)], ['Latence son', S.R != null ? fmt.ms1(S.R) + ' ms' : '—']];
     } else {
       const st = Listen.status(), f = S.fit;
-      if (Listen.mode === 'sync') {
-        bipsOn = st !== 'wait';
-        help.textContent = { wait: 'En écoute. Pose le Départ à 10 cm et appuie sur « Lancer les bips » sur le Départ.', anchor: 'Bips reçus, calcul en cours…', progress: 'Bips reçus. Précision en cours d\'amélioration : laisse tourner.', ok: 'Synchro OK. Fais l\'étape 2 pendant que les bips tournent, puis Terminer sur le Départ.' }[st];
-        kv($('#syncKv'), [['Bips reçus', f ? String(f.n) : '0'], ['Dérive', f && f.n >= 3 ? comma(f.rhoPpm.toFixed(1)) + ' ppm' : '—'], ['Précision 30 min', f && isFinite(f.err30) ? '±' + fmt.ms1(f.err30) + ' ms' : '—']]);
-        syncOk = st === 'ok';
-        stEl.textContent = syncOk ? 'Synchro OK' : st === 'wait' ? 'En écoute' : 'En cours'; stEl.className = 'state ' + (syncOk ? 'ok' : st === 'wait' ? '' : 'warn');
-        btn('Recommencer l\'écoute', '', () => Listen.start());
-      } else {
-        const c = Listen.chkRes, lc = S.lastCheck;
-        bipsOn = Listen.chk.length > 0;
-        help.textContent = Listen.mode === 'checked' && lc
-          ? `Contrôle fait : l'horloge avait dérivé de ${fmt.ms1(Math.abs(lc.r))} ms en ${Math.round(lc.min)} min. Synchro recalée${lc.fixed ? ` et ${lc.fixed} temps corrigé${lc.fixed > 1 ? 's' : ''}` : ''}.`
-          : 'Contrôle : pose le Départ à 10 cm et appuie sur « Contrôler la synchro » sur le Départ.';
-        kv($('#syncKv'), [['Bips reçus', String(Listen.chk.length)], ['Écart mesuré', c ? fmt.ms1(c.r) + ' ms' : '—'], ['Après', c ? Math.round(c.min) + ' min' : '—']]);
-        syncOk = Listen.mode === 'checked';
-        stEl.textContent = syncOk ? (Math.abs(lc.r) > 20 ? 'Écart fort' : 'Contrôle OK') : 'Contrôle'; stEl.className = 'state ' + (syncOk ? (Math.abs(lc.r) > 20 ? 'warn' : 'ok') : 'warn');
-        btn('Nouvelle synchro', '', () => Listen.start());
-      }
+      prog = Listen.progress();
+      if (st === 'wait') { title = 'En attente du Départ'; state = 'wait'; help = 'Pose ce téléphone à 10 cm de l\'autre, volume à fond, et ouvre « Départ » dessus. La synchro démarre toute seule.'; }
+      else if (st === 'ok') { title = 'Synchro OK'; state = 'ok'; help = 'Passage à l\'écran piste…'; }
+      else { title = 'Synchronisation…'; state = 'run'; help = 'Ne bouge pas les téléphones (environ 30 s).'; }
+      pairs = [['Bips reçus', f ? String(f.n) : '0'], ['Précision 30 min', f && f.n >= 8 && isFinite(f.err30) ? '±' + fmt.ms1(f.err30) + ' ms' : '—']];
+      btn('Recommencer', 'ghost', () => Listen.start());
     }
-    $('#stepSync').classList.toggle('done', syncOk);
-    // claquements : à faire pendant les bips (même état du micro que pour la synchro)
-    const canClap = S.role === 'start' ? (Emit.active && !Emit.checking) : (Listen.mode === 'sync' && Listen.status() !== 'wait');
-    $('#clapHelp').innerHTML = canClap || Clap.active || S.D != null
-      ? 'Pendant que les bips tournent : main gauche immobile <b>juste à gauche</b> de la ligne rouge, à 30–50 cm de l\'objectif ; frappe-la avec la main droite qui arrive de la droite. 5 claquements, un toutes les 2 s.'
-      : (S.role === 'start' ? 'Utile seulement pour le mode Cellule. Se fait pendant les bips de l\'étape 1.' : 'Se fait pendant les bips de l\'étape 1 : lance-les d\'abord sur le Départ.');
-    const dots = $('#clapDots'); dots.replaceChildren(...Array.from({ length: 5 }, (_, i) => mk('i', i < Math.min(5, Clap.vals.length) || S.D != null ? 'on' : '')));
-    kv($('#clapKv'), [['Écart caméra/son', S.D != null ? fmt.ms1(S.D) + ' ms' : (Clap.vals.length ? fmt.ms1(CC.median(Clap.vals)) + ' ms' : '—')], ['Dispersion', S.Dspread != null ? fmt.ms1(S.Dspread) + ' ms' : '—']]);
-    const cs = $('#clapState'); cs.textContent = Clap.active ? 'Écoute' : S.D != null ? 'Faite' : (S.role === 'start' ? 'Mode Cellule' : 'À faire'); cs.className = 'state ' + (S.D != null ? 'ok' : Clap.active ? 'warn' : '');
-    $('#stepClap').classList.toggle('done', S.D != null);
-    const bc = $('#btnClap'); bc.textContent = Clap.active ? 'Arrêter' : S.D != null ? 'Refaire' : 'Commencer';
-    bc.className = 'btn ' + (!Clap.active && S.D == null && canClap ? 'primary' : ''); bc.disabled = !Clap.active && !canClap;
-    $('#prepNote').textContent = S.role === 'start'
-      ? 'Mode bip : la synchro suffit. Mode Cellule : synchro et caméra.'
-      : 'Les deux étapes sont nécessaires sur l\'Arrivée.';
-    void bipsOn;
+    $('#pairTitle').textContent = title; $('#pairHelp').textContent = help;
+    $('#pairBar').style.width = Math.round(prog * 100) + '%';
+    $('#scrPrep').dataset.state = state;
+    kv($('#syncKv'), pairs);
     renderChips();
   }
-  function flashPrep(t) { $('#prepNote').textContent = t; }
   function renderCountdown() {
     if (S.screen !== 'run' || S.role !== 'start' || S.mode !== 'bip') return;
     const p = Go.p, b = $('#big');
@@ -1334,11 +1414,23 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     if (left > 0) { b.textContent = fmt.clock(left).replace(/,\d$/, ''); b.className = 'big num ' + (left < 2600 ? 'go' : ''); $('#bigSub').textContent = left > p.sPerf - p.tMarks ? 'Place-toi. « À vos marques » arrive.' : left > p.sPerf - p.tSet ? 'À vos marques' : 'Prêts'; }
     else { b.textContent = 'Parti'; b.className = 'big go'; $('#bigSub').textContent = 'Le temps s\'affiche sur l\'Arrivée.'; }
   }
+  const CLAP_HELP = 'Téléphone posé à sa place. À 30–50 cm de l\'objectif, tiens la main gauche immobile juste à gauche de la ligne rouge et frappe-la avec la main droite qui arrive de la droite. Un bip confirme chaque claquement.';
   function renderRun() {
     if (S.screen !== 'run') return;
     $('#modeBip').setAttribute('aria-pressed', S.mode === 'bip'); $('#modeCell').setAttribute('aria-pressed', S.mode === 'cell');
+    if (needCalib() && S.D == null && !Clap.active) { Clap.start(); return; }
+    if (!needCalib() && Clap.active) { Clap.stop(); return; }
     const ctl = $('#ctl'); ctl.replaceChildren();
     const camRun = $('#camRun');
+    $('#calibHelp').hidden = true;
+    if (Clap.active) {
+      camRun.hidden = false;
+      Cam.mount(camRun, S.role === 'finish' ? 'Pose le téléphone à son emplacement, ligne rouge sur la ligne d\'arrivée.' : 'Pose le téléphone à son emplacement, ligne rouge 50 cm devant ta ligne de départ.');
+      showBig(Math.min(Clap.N, Clap.vals.length) + '/' + Clap.N, 'Claque 3 fois des mains sur la ligne rouge', 'Calibration caméra', Clap.vals.length ? '' : 'dim');
+      const ch = $('#calibHelp'); ch.hidden = false; ch.textContent = CLAP_HELP;
+      renderList(); renderChips(); renderBanners();
+      return;
+    }
     if (S.role === 'start') {
       camRun.hidden = S.mode !== 'cell';
       if (S.mode === 'bip') {
@@ -1346,7 +1438,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
         if (!Go.p) { const b = $('#big'); b.textContent = '—'; b.className = 'big num dim'; $('#bigSub').textContent = 'Le bip tombera sur la prochaine minute ronde (≥ ' + S.settings.lead + ' s).'; }
         const b = mk('button', 'btn ' + (Go.p ? '' : 'primary') + ' wide', Go.p ? 'Annuler ce départ' : 'Lancer un départ');
         b.onclick = () => { Voice.unlock(); Go.p ? Go.cancel() : Go.launch(); };
-        b.disabled = S.s0 == null;
+        b.disabled = S.s0 == null || Emit.active;
         ctl.append(b);
         if (Go.log.length) ctl.append(mk('p', 'note', `${Go.log.length} départ(s) donné(s). Dernier à ${fmt.hm(Go.log[0].at)}.`));
       } else {
@@ -1355,7 +1447,6 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
         const arm = mk('button', 'btn ' + (armed ? '' : 'primary'), armed ? 'Cellule armée — désarmer' : 'Armer la cellule');
         arm.onclick = () => { if (Cam.det) { Cam.det.armed = !Cam.det.armed; Cam.det.clearSince = now(); } renderRun(); };
         ctl.append(arm);
-        // saisie du code
         const box = mk('div', 'codein', S.codeBuf ? S.codeBuf.padEnd(5, '·') : '·····'); box.id = 'codeIn';
         const pad = mk('div', 'keypad');
         const press = (k) => {
@@ -1374,10 +1465,21 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
         }
         ctl.append(mk('span', 'lbl note', 'Code affiché par l\'Arrivée'), box, pad);
       }
+      // contrôle de synchro : un bouton, téléphones côte à côte
+      const row = mk('div', 'check-row');
+      if (Emit.active && Emit.checking) {
+        row.append(mk('span', 'note', 'Contrôle en cours : téléphones côte à côte. S\'arrête tout seul.'));
+        const st = mk('button', 'btn ghost', 'Arrêter'); st.onclick = () => { Emit.stop(); renderRun(); }; row.append(st);
+      } else if (!Emit.active) {
+        const cb = mk('button', 'btn ghost', 'Contrôler la synchro'); cb.disabled = S.s0 == null || !!Go.p;
+        cb.onclick = () => { Emit.resume(); renderRun(); };
+        row.append(cb, mk('span', 'note', 'En fin de séance, téléphones côte à côte : corrige les temps de l\'Arrivée.'));
+      }
+      ctl.append(row);
     } else {
       camRun.hidden = false;
-      Cam.mount(camRun, 'Aligne la ligne rouge sur ta ligne d\'arrivée.');
-      if (!S.results.length && !S.lastPassage) showBig('—', S.mode === 'bip' ? 'En attente d\'un passage' : 'Le code de ton passage s\'affichera ici', S.mode === 'bip' ? 'Dernier temps' : 'Code du passage', 'dim');
+      Cam.mount(camRun, 'Ligne rouge sur ta ligne d\'arrivée.');
+      if (!S.results.length && !S.lastPassage && $('#bigLbl').textContent !== 'Caméra calibrée') showBig('—', S.mode === 'bip' ? 'En attente d\'un passage' : 'Le code de ton passage s\'affichera ici', S.mode === 'bip' ? 'Dernier temps' : 'Code du passage', 'dim');
     }
     renderList(); renderChips(); renderBanners();
   }
@@ -1400,7 +1502,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     if (!items.length) { const li = mk('li', 'empty', 'Aucun temps pour l\'instant.'); items.push(li); }
     l.replaceChildren(...items);
   }
-  // horloge commune et chrono depuis la dernière minute ronde (Arrivée, mode bip)
+  // horloge commune
   setInterval(() => {
     if (S.screen !== 'run') return;
     let tau = null;
@@ -1426,7 +1528,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     S.screen = screen;
     for (const id of ['scrHome', 'scrPrep', 'scrRun']) $('#' + id).hidden = id !== 'scr' + screen[0].toUpperCase() + screen.slice(1);
     $('#btnSettings').hidden = screen === 'home'; $('#chips').hidden = screen === 'home';
-    if (screen === 'prep') { Cam.mount($('#camPrep'), 'Ligne rouge = cellule. Claque des mains dessus.'); renderPrep(); }
+    if (screen === 'prep') { if (Clap.active) { Clap.active = false; clearInterval(Clap.timer); Clap.timer = null; applyGateConfig(); } renderPrep(); }
     if (screen === 'run') { applyGateConfig(); renderRun(); }
     window.scrollTo(0, 0);
   }
@@ -1434,13 +1536,15 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     S.role = role;
     const pill = $('#rolePill'); pill.hidden = false; pill.textContent = role === 'start' ? 'Départ' : 'Arrivée'; pill.className = 'role-pill on';
     const err = $('#homeErr'); err.hidden = true;
+    for (const b of document.querySelectorAll('.role')) b.disabled = true;
     Voice.init(); Voice.unlock();
     try {
       if (!window.isSecureContext) throw new Error('secure');
-      await Audio.start(role === 'start' ? ['down', 'up', 'gun'] : ['down', 'up']);
+      await Audio.start(role === 'start' ? ['down', 'up', 'hello', 'ok', 'gun'] : ['down', 'up', 'hello', 'ok']);
       await Cam.start();
     } catch (e) {
       console.error(e);
+      for (const b of document.querySelectorAll('.role')) b.disabled = false;
       err.hidden = false;
       err.textContent = e && e.message === 'secure'
         ? 'Cette page doit être ouverte en https pour accéder au micro et à la caméra.'
@@ -1450,8 +1554,8 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     S.started = true; Wake.on();
     Audio.onDet = (d) => role === 'start' ? Emit.onDet(d) : Listen.onDet(d);
     Cam.onEvent = onGate;
-    if (role === 'finish') Listen.start();
     show('prep');
+    if (role === 'finish') Listen.start();
   }
 
   // reprise du son après une interruption (appel, mise en arrière-plan) : nécessite un toucher sur iOS
@@ -1460,8 +1564,6 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   // ---------------- liaisons UI ----------------
   $('#roleStart').onclick = () => begin('start');
   $('#roleFinish').onclick = () => begin('finish');
-  $('#btnClap').onclick = () => { Clap.active ? Clap.stop() : Clap.start(); };
-  $('#btnToRun').onclick = () => { if (Emit.active) Emit.stop(); if (Clap.active) Clap.stop(); if (S.role === 'finish') Listen.stop(); show('run'); if (S.lastCheck && S.lastCheck.fixed) flashNote(S.lastCheck.fixed + ' temps corrigé(s) après le contrôle.'); };
   $('#modeBip').onclick = () => { S.mode = 'bip'; store.set('mode', 'bip'); if (S.role === 'start' && Cam.det) Cam.det.armed = false; applyGateConfig(); renderRun(); };
   $('#modeCell').onclick = () => { S.mode = 'cell'; store.set('mode', 'cell'); if (Go.p) Go.cancel(); applyGateConfig(); renderRun(); };
   const dlg = $('#dlgSettings');
@@ -1469,6 +1571,7 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     $('#setRun').value = S.settings.runDist; $('#setLead').value = S.settings.lead; $('#setAth').value = S.settings.athDist;
     $('#setDir').value = String(S.settings.dir); $('#setRearm').checked = S.settings.autoRearm; $('#setVoice').checked = S.settings.voice;
     for (const e of dlg.querySelectorAll('[data-for]')) e.hidden = e.dataset.for !== S.role;
+    $('#btnRecalib').hidden = !needCalib();
     $('#clearConfirm').hidden = true;
     if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
   };
@@ -1483,13 +1586,18 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   };
   $('#formSettings').addEventListener('change', readSettings);
   dlg.addEventListener('close', readSettings);
-  $('#btnResync').onclick = () => { dlg.close(); if (Go.p) Go.cancel(); if (S.role === 'finish') { if (S.fit && !S.warnings.has('clock') && !S.warnings.has('audio')) Listen.startCheck(); else Listen.start(); } show('prep'); renderBanners(); };
+  $('#btnResync').onclick = () => {
+    dlg.close(); if (Go.p) Go.cancel();
+    if (S.role === 'finish') { show('prep'); Listen.start(); } else { Emit.stop(); show('prep'); }
+    renderBanners();
+  };
+  $('#btnRecalib').onclick = () => { dlg.close(); S.D = null; if (S.screen === 'run') Clap.start(); };
   $('#btnClear').onclick = () => { $('#clearConfirm').hidden = false; };
   $('#btnClearNo').onclick = () => { $('#clearConfirm').hidden = true; };
   $('#btnClearYes').onclick = () => { S.results = []; store.set('results', []); $('#clearConfirm').hidden = true; renderList(); };
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-  window.ChronoApp = { S, Audio, Cam, Emit, Listen, Clap, Go, VERSION, enterCode };
+  window.ChronoApp = { S, Audio, Cam, Emit, Listen, Clap, Go, Pair, VERSION, enterCode, show };
 })();
 </script>
 </body>
