@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Chrono Sprint</title>
+<meta name="theme-color" content="#F2F3F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E0F11" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Chrono">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+/*__FONTS__*/
+/* Mise en page : outil une colonne pour téléphone fixé au bord de la piste — bandeau d'état, gros afficheur de temps, vue caméra avec la ligne, commandes. */
+:root {
+  --bg: #F2F3F1; --surface: #FFFFFF; --sunk: #E7E9E5; --ink: #121417; --muted: #5A616B; --line: #D5D8D2;
+  --tartan: #C2361F; --on-tartan: #FFFFFF; --lane: #FFFFFF;
+  --ok: #13804F; --warn: #9A5F06; --bad: #B42318;
+  --display: 'Barlow Condensed', 'Arial Narrow', 'Roboto Condensed', system-ui, sans-serif;
+  --body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --r: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E0F11; --surface: #17191C; --sunk: #202327; --ink: #EDEEEB; --muted: #9BA1A9; --line: #2B2F34;
+  --tartan: #FF5B3F; --on-tartan: #140604; --lane: #F4F4F0; --ok: #3DCB8A; --warn: #E7A53C; --bad: #FF6E61; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #0E0F11; --surface: #17191C; --sunk: #202327; --ink: #EDEEEB; --muted: #9BA1A9; --line: #2B2F34;
+  --tartan: #FF5B3F; --on-tartan: #140604; --lane: #F4F4F0; --ok: #3DCB8A; --warn: #E7A53C; --bad: #FF6E61; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+.app { max-width: 560px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Bandeau */
+.bar { display: flex; align-items: center; gap: 10px; padding-block: 12px 10px; }
+.brand { font: 700 22px/1 var(--display); letter-spacing: 0.02em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+.brand::before { content: ""; width: 4px; height: 20px; background: var(--tartan); border-radius: 2px; }
+.role-pill { font: 600 13px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 10px; border-radius: 999px; background: var(--sunk); color: var(--muted); }
+.role-pill.on { background: var(--tartan); color: var(--on-tartan); }
+.bar .spacer { flex: 1; }
+.icon-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-weight: 600; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 10px; }
+.chip { font-size: 12.5px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: var(--sunk); color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.8; }
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+
+/* Boutons */
+.btn { appearance: none; border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 14px 18px; font-weight: 650; font-size: 16px; min-height: 52px; cursor: pointer; }
+.btn:focus-visible, .icon-btn:focus-visible, .seg button:focus-visible, .key:focus-visible, .role:focus-visible { outline: 3px solid var(--tartan); outline-offset: 2px; }
+.btn.primary { background: var(--tartan); border-color: var(--tartan); color: var(--on-tartan); }
+.btn.ghost { background: transparent; }
+.btn.wide { width: 100%; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; } .row > * { flex: 1 1 140px; }
+
+/* Accueil */
+.hero { font: 700 clamp(56px, 19vw, 104px)/0.86 var(--display); text-transform: uppercase; letter-spacing: -0.01em; padding-top: 8px; }
+.hero em { font-style: normal; color: var(--tartan); }
+.lede { color: var(--muted); max-width: 34ch; margin: 14px 0 22px; font-size: 16px; }
+.roles { display: grid; gap: 12px; }
+.role { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 18px; padding: 18px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center; cursor: pointer; }
+.role .lane { grid-row: span 2; width: 44px; height: 56px; border-radius: 8px; background: var(--tartan); position: relative; overflow: hidden; }
+.role .lane::after { content: ""; position: absolute; left: 0; right: 0; height: 4px; background: var(--lane); }
+.role[data-role="start"] .lane::after { bottom: 12px; } .role[data-role="finish"] .lane::after { top: 12px; }
+.role-k { font: 700 28px/1 var(--display); text-transform: uppercase; letter-spacing: 0.02em; }
+.role-d { color: var(--muted); font-size: 14px; }
+.guide { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 14px; }
+.guide summary { font-weight: 650; cursor: pointer; padding: 6px 0; }
+.guide ol { padding-left: 20px; margin: 8px 0; color: var(--ink); } .guide li { margin: 6px 0; } .guide li b { font-weight: 650; }
+.note { color: var(--muted); font-size: 13.5px; }
+
+/* Étapes de préparation */
+.steps { display: grid; gap: 14px; padding-bottom: 14px; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: grid; gap: 12px; }
+.step-h { display: flex; align-items: center; gap: 10px; }
+.step-h .n { font: 700 15px/1 var(--display); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--sunk); color: var(--muted); flex: none; }
+.step.done .step-h .n { background: var(--ok); color: var(--surface); }
+.step-h h2 { font: 700 21px/1.05 var(--display); text-transform: uppercase; letter-spacing: 0.02em; flex: 1; }
+.state { font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.state.ok { color: var(--ok); } .state.warn { color: var(--warn); } .state.bad { color: var(--bad); }
+.step p { margin: 0; color: var(--muted); }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.kv div { background: var(--sunk); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.kv dt { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.kv dd { margin: 2px 0 0; font: 600 20px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.dots { display: flex; gap: 8px; } .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--sunk); border: 1px solid var(--line); }
+.dots i.on { background: var(--ok); border-color: var(--ok); }
+
+/* Caméra */
+.cam { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 4 / 5; max-height: 46vh; width: 100%; max-width: 100%; margin-inline: auto; }
+.cam.small { aspect-ratio: 16 / 10; max-height: 30vh; }
+.cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cam .gate { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; transform: translateX(-50%); background: var(--tartan); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
+.cam.fired .gate { background: #39E58C; width: 7px; }
+.cam .camhint { position: absolute; left: 8px; right: 8px; top: 8px; font-size: 12.5px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+.cam .meter { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.25); overflow: hidden; }
+.cam .meter i { display: block; height: 100%; width: 0%; background: #fff; transition: width 80ms linear; }
+.cam .meter b { position: absolute; top: -2px; bottom: -2px; left: 50%; width: 2px; background: var(--tartan); }
+.cam .camwarn { position: absolute; inset: auto 8px 26px 8px; font-size: 13px; font-weight: 700; color: #fff; background: rgba(180,35,24,0.88); padding: 6px 8px; border-radius: 8px; }
+
+/* Afficheur */
+.readout { padding-block: 6px 12px; display: grid; gap: 4px; }
+.readout .lbl { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.big { font: 700 clamp(84px, 30vw, 168px)/0.86 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.big.dim { color: var(--muted); }
+.big .unit { font-size: 0.32em; letter-spacing: 0.02em; margin-left: 6px; color: var(--muted); }
+.big.go { color: var(--tartan); }
+.sub { font: 600 19px/1.2 var(--display); color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.flash { animation: flash 900ms ease-out; }
+@keyframes flash { 0% { color: var(--tartan); transform: scale(1.04); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; } .cam .meter i { transition: none; } }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--sunk); border-radius: 12px; padding: 4px; gap: 4px; margin-bottom: 12px; }
+.seg button { border: 0; background: transparent; border-radius: 9px; padding: 10px 8px; font-weight: 650; font-size: 14.5px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+.ctl { display: grid; gap: 10px; margin-top: 12px; }
+.clockline { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 13px; padding-top: 8px; }
+.clockline b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 650; }
+
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.key { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; min-height: 54px; font: 600 26px/1 var(--display); cursor: pointer; }
+.key.ok { background: var(--tartan); border-color: var(--tartan); color: var(--on-tartan); font-size: 20px; text-transform: uppercase; letter-spacing: 0.06em; }
+.codein { font: 700 44px/1 var(--display); letter-spacing: 0.12em; text-align: center; padding: 10px; border-radius: 12px; background: var(--sunk); min-height: 64px; font-variant-numeric: tabular-nums; }
+.codein.err { color: var(--bad); }
+
+.list { list-style: none; margin: 16px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.list li { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.list .t { font: 700 26px/1 var(--display); font-variant-numeric: tabular-nums; }
+.list .m { color: var(--muted); font-size: 13px; text-align: right; }
+.list .x { border: 0; background: transparent; color: var(--muted); font-size: 20px; padding: 0 4px; cursor: pointer; }
+.list .empty { display: block; color: var(--muted); grid-template-columns: none; }
+.banner { border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 600; background: color-mix(in srgb, var(--warn) 16%, var(--surface)); color: var(--ink); border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); margin-bottom: 10px; }
+.banner.bad { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+
+/* Réglages */
+dialog { border: 0; border-radius: 20px; padding: 0; width: min(520px, calc(100vw - 24px)); background: var(--surface); color: var(--ink); max-height: calc(100dvh - 40px); }
+dialog::backdrop { background: rgba(0,0,0,0.45); }
+.sheet { padding: 18px; display: grid; gap: 14px; }
+.sheet h2 { font: 700 24px/1 var(--display); text-transform: uppercase; }
+.field { display: grid; gap: 6px; }
+.field label { font-weight: 650; font-size: 14px; }
+.field .hint { color: var(--muted); font-size: 12.5px; }
+.field input[type=number], .field select { font: 600 18px/1.2 var(--body); padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%; }
+.check { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.check input { width: 22px; height: 22px; accent-color: var(--tartan); }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">Chrono Sprint</div>
+    <span class="role-pill" id="rolePill" hidden></span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="btnSettings" hidden>Réglages</button>
+  </header>
+  <div class="chips" id="chips" hidden></div>
+  <div id="banners"></div>
+
+  <!-- Accueil -->
+  <section id="scrHome">
+    <h1 class="hero">Chrono<br><em>sans réseau</em></h1>
+    <p class="lede">Deux téléphones, synchronisés côte à côte, puis chacun sur sa ligne. Aucun signal ne passe pendant la course.</p>
+    <div class="roles">
+      <button class="role" data-role="start" id="roleStart"><span class="lane"></span><span class="role-k">Départ</span><span class="role-d">Donne « prêts… bip » ou détecte ton départ.</span></button>
+      <button class="role" data-role="finish" id="roleFinish"><span class="lane"></span><span class="role-k">Arrivée</span><span class="role-d">Détecte ton passage et affiche le temps.</span></button>
+    </div>
+    <p class="note" id="homeErr" hidden></p>
+    <details class="guide">
+      <summary>Préparer la séance (2 min)</summary>
+      <ol>
+        <li><b>Volume à fond</b> sur les deux téléphones, écouteurs Bluetooth déconnectés.</li>
+        <li>Ouvre <b>Arrivée</b> sur un téléphone, puis <b>Départ</b> sur l'autre. Pose-les <b>côte à côte</b> (10 cm).</li>
+        <li><b>Synchro</b> : sur le Départ, lance les bips. <b>Pendant les bips</b>, fais les 5 claquements de mains devant la caméra de l'Arrivée (et du Départ pour le mode Cellule). Attends « Synchro OK » sur l'Arrivée (30 à 60 s), puis Terminer.</li>
+        <li>Pose chaque téléphone <b>debout</b> et calé, au bord de la piste, caméra face à la piste, ligne rouge alignée sur la ligne au sol, à 3–8 m du couloir.</li>
+        <li><b>En fin de séance</b>, remets les téléphones côte à côte et fais « Synchro / contrôle » : la dérive est mesurée et les temps sont corrigés.</li>
+      </ol>
+      <p class="note">Désactive le verrouillage auto de l'écran, ne recharge pas la page et ne quitte pas l'app pendant la séance : la synchro serait perdue. Mode Cellule au départ : place la ligne rouge 50 cm devant ta ligne de départ pour que tes mains ne la déclenchent pas.</p>
+    </details>
+  </section>
+
+  <!-- Préparation -->
+  <section id="scrPrep" hidden>
+    <div class="steps">
+      <div class="step" id="stepSync">
+        <div class="step-h"><span class="n">1</span><h2>Synchro côte à côte</h2><span class="state" id="syncState">—</span></div>
+        <p id="syncHelp"></p>
+        <dl class="kv" id="syncKv"></dl>
+        <div class="row" id="syncBtns"></div>
+      </div>
+      <div class="step" id="stepClap">
+        <div class="step-h"><span class="n">2</span><h2>Calibrer la caméra</h2><span class="state" id="clapState">—</span></div>
+        <p id="clapHelp"></p>
+        <div class="cam small" id="camPrep"></div>
+        <div class="dots" id="clapDots"></div>
+        <dl class="kv" id="clapKv"></dl>
+        <button class="btn" id="btnClap">Commencer</button>
+      </div>
+      <button class="btn primary wide" id="btnToRun">Aller sur la piste</button>
+      <p class="note" id="prepNote"></p>
+    </div>
+  </section>
+
+  <!-- Séance -->
+  <section id="scrRun" hidden>
+    <div class="seg" role="group" aria-label="Mode de départ">
+      <button id="modeBip" aria-pressed="true">Départ au bip</button>
+      <button id="modeCell" aria-pressed="false">Cellule</button>
+    </div>
+    <div class="readout">
+      <span class="lbl" id="bigLbl">Dernier temps</span>
+      <div class="big num dim" id="big">—</div>
+      <div class="sub" id="bigSub">&nbsp;</div>
+    </div>
+    <div class="cam" id="camRun"></div>
+    <div class="ctl" id="ctl"></div>
+    <p class="note" id="runNote" aria-live="polite"></p>
+    <div class="clockline"><span>Horloge commune <b id="commonClock">—</b></span><span id="runInfo"></span></div>
+    <ol class="list" id="list"></ol>
+  </section>
+
+  <!-- vidéo unique, déplacée entre les écrans -->
+  <div hidden><div id="videoHome"><video id="video" playsinline muted autoplay></video><div class="gate"></div><div class="camhint" id="camHint"></div><div class="camwarn" id="camWarn" hidden></div><div class="meter"><i id="meterBar"></i><b></b></div></div></div>
+</div>
+
+<dialog id="dlgSettings">
+  <form class="sheet" method="dialog" id="formSettings">
+    <h2>Réglages</h2>
+    <div class="field"><label for="setRun">Distance de course (m)</label><input type="number" id="setRun" min="10" max="400" step="1" inputmode="numeric"><span class="hint">Sert à écarter les passages impossibles (trop rapides ou trop lents).</span></div>
+    <div class="field" data-for="start"><label for="setLead">Délai avant le départ au bip (s)</label><input type="number" id="setLead" min="15" max="90" step="1" inputmode="numeric"><span class="hint">Temps pour te placer. Le bip tombe toujours sur une minute ronde de l'horloge commune.</span></div>
+    <div class="field" data-for="finish"><label for="setAth">Distance athlète ↔ téléphone Départ (m)</label><input type="number" id="setAth" min="0" max="10" step="0.5" inputmode="decimal"><span class="hint">Mode bip : corrige le temps que met le son à t'atteindre (3 ms par mètre).</span></div>
+    <div class="field"><label for="setDir">Sens de passage pris en compte</label><select id="setDir"><option value="0">Les deux sens</option><option value="1">De gauche à droite (vu de l'écran)</option><option value="-1">De droite à gauche (vu de l'écran)</option></select></div>
+    <label class="check" data-for="start"><input type="checkbox" id="setRearm"> Réarmer la cellule automatiquement</label>
+    <label class="check"><input type="checkbox" id="setVoice"> Annonces vocales</label>
+    <div class="row"><button class="btn" type="button" id="btnResync">Synchro / contrôle</button><button class="btn" type="button" id="btnClear">Effacer les temps</button></div>
+    <div class="confirm" id="clearConfirm" hidden><span>Effacer tous les temps ?</span><button class="btn" type="button" id="btnClearYes">Effacer</button><button class="btn ghost" type="button" id="btnClearNo">Annuler</button></div>
+    <button class="btn primary" value="close">Fermer</button>
+  </form>
+</dialog>
+
+<script>/*__CORE__*/</script>
+<script>/*__APP__*/</script>
+</body>
+</html>
