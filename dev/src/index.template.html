@@ -104,11 +104,19 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .pair-art .waves { display: flex; gap: 5px; align-items: center; }
 .pair-art .waves i { width: 4px; border-radius: 2px; background: var(--tartan); height: 14px; opacity: 0.25; }
 .pair-art .waves i:nth-child(2) { height: 26px; }
-#scrPrep[data-state="run"] .waves i { animation: wave 900ms ease-in-out infinite; }
-#scrPrep[data-state="run"] .waves i:nth-child(2) { animation-delay: 150ms; }
-#scrPrep[data-state="run"] .waves i:nth-child(3) { animation-delay: 300ms; }
-#scrPrep[data-state="ok"] .waves i { opacity: 1; background: var(--ok); }
-@keyframes wave { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.pair-art .clap { display: flex; gap: 4px; align-items: flex-end; height: 40px; }
+.pair-art .clap i { width: 14px; height: 30px; border-radius: 7px 7px 4px 4px; background: var(--tartan); opacity: 0.35; }
+.pair-art .clap i:first-child { transform: rotate(-14deg); } .pair-art .clap i:last-child { transform: rotate(14deg); }
+#scrPrep[data-state="run"] .clap i { opacity: 1; }
+#scrPrep[data-state="ok"] .clap i { opacity: 1; background: var(--ok); }
+.pair-big { font: 700 clamp(64px, 22vw, 120px)/0.9 var(--display); letter-spacing: -0.01em; min-height: 0.9em; }
+#scrPrep[data-state="ok"] .pair-big { color: var(--ok); }
+#scrPrep[data-state="wait"] .pair-big:empty, #scrPrep[data-state="ok"] .pair-big:empty { display: none; }
+.mic { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.mic .prog { height: 8px; } .mic .prog i { background: var(--muted); transition: width 80ms linear; }
+.qr-wrap { display: grid; place-items: center; }
+.qr { background: #fff; padding: 12px; border-radius: 14px; width: min(78vw, 340px); }
+.qr svg { display: block; width: 100%; height: auto; }
 .pair-h { font: 700 clamp(40px, 12vw, 64px)/0.92 var(--display); text-transform: uppercase; letter-spacing: 0.005em; }
 #scrPrep[data-state="ok"] .pair-h { color: var(--ok); }
 .pair-p { margin: 0; color: var(--muted); font-size: 16px; max-width: 36ch; }
@@ -119,7 +127,7 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .check-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-top: 6px; border-top: 1px solid var(--line); margin-top: 4px; }
 .check-row .btn { flex: none; min-height: 44px; padding: 10px 14px; font-size: 15px; }
 .check-row .note { flex: 1 1 180px; min-width: 0; }
-@media (prefers-reduced-motion: reduce) { #scrPrep[data-state="run"] .waves i { animation: none; opacity: 0.8; } .prog i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .prog i, .mic .prog i { transition: none; } }
 
 /* Caméra */
 .cam { position: relative; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 4 / 5; max-height: 46vh; width: 100%; max-width: 100%; margin-inline: auto; }
@@ -204,25 +212,27 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
     <details class="guide">
       <summary>Comment ça marche (1 min)</summary>
       <ol>
-        <li><b>Volume à fond</b> sur les deux téléphones, verrouillage automatique de l'écran désactivé.</li>
-        <li>Ouvre <b>Arrivée</b> sur un téléphone, <b>Départ</b> sur l'autre, et pose-les <b>côte à côte</b>. Ils se synchronisent seuls (environ 30 s) puis passent à l'écran piste.</li>
+        <li>Ouvre <b>Arrivée</b> sur un téléphone, <b>Départ</b> sur l'autre. Pose-les côte à côte et <b>claque 2 fois des mains</b> juste au-dessus : les deux écrans affichent le même nombre, la synchro est faite.</li>
         <li>Pose l'Arrivée <b>debout et calée</b> au bord de la piste, ligne rouge sur la ligne d'arrivée, puis <b>claque 3 fois des mains</b> devant elle : elle dit « Prêt ».</li>
-        <li>Va au départ et appuie sur <b>Lancer un départ</b>. Ton temps s'affiche et s'annonce à l'arrivée.</li>
-        <li>En fin de séance (ou toutes les 30 min), remets les téléphones côte à côte et appuie sur <b>Contrôler la synchro</b> sur le Départ : les temps sont corrigés.</li>
+        <li>Au départ, appuie sur <b>Lancer un départ</b> (volume du Départ à fond). Ton temps s'affiche et s'annonce à l'arrivée.</li>
+        <li>En fin de séance : <b>Corriger la dérive</b> sur les deux, clap-clap côte à côte, puis montre le QR code du Départ à la caméra de l'Arrivée. Les temps sont corrigés et la dérive est mémorisée pour les fois suivantes.</li>
       </ol>
-      <p class="note">Ne quitte pas l'app et ne recharge pas la page pendant la séance : la synchro serait perdue.</p>
+      <p class="note">Désactive le verrouillage automatique de l'écran. Ne quitte pas l'app pendant la séance : la synchro serait perdue.</p>
     </details>
   </section>
 
-  <!-- Appairage -->
+  <!-- Synchro clap-clap / fin de séance -->
   <section id="scrPrep" hidden data-state="wait">
     <div class="pair">
-      <div class="pair-art" aria-hidden="true"><span class="ph"></span><span class="waves"><i></i><i></i><i></i></span><span class="ph"></span></div>
-      <h2 class="pair-h" id="pairTitle">Appairage</h2>
+      <div class="pair-art" aria-hidden="true"><span class="ph"></span><span class="clap"><i></i><i></i></span><span class="ph"></span></div>
+      <h2 class="pair-h" id="pairTitle">Clap-clap</h2>
       <p class="pair-p" id="pairHelp"></p>
-      <div class="prog" role="progressbar" aria-label="Avancement de la synchro"><i id="pairBar"></i></div>
-      <dl class="kv" id="syncKv"></dl>
+      <div class="pair-big num" id="pairBig" aria-live="polite"></div>
+      <div class="mic"><span>Micro</span><div class="prog"><i id="micBar"></i></div></div>
+      <div class="qr-wrap" id="qrWrap" hidden><div class="qr" id="qrBox"></div></div>
+      <div class="cam small" id="camPrep" hidden></div>
       <div class="row" id="pairBtns"></div>
+      <p class="note" id="prepNote"></p>
     </div>
   </section>
 
@@ -265,6 +275,8 @@ dialog::backdrop { background: rgba(0,0,0,0.45); }
   </form>
 </dialog>
 
+<script>/*__JSQR__*/</script>
+<script>/*__QRGEN__*/</script>
 <script>/*__CORE__*/</script>
 <script>/*__APP__*/</script>
 </body>

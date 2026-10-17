@@ -8,9 +8,11 @@ for w in (600, 700):
 html = (root / 'src/index.template.html').read_text()
 core = (root / 'src/core.js').read_text()
 app = (root / 'src/app.js').read_text()
-for name, code in (('core', core), ('app', app)):
+jsqr = (root / 'vendor/jsqr.min.js').read_text()
+qrgen = (root / 'vendor/qrgen.min.js').read_text()
+for name, code in (('core', core), ('app', app), ('jsqr', jsqr), ('qrgen', qrgen)):
     assert '</script' not in code
-html = html.replace('/*__FONTS__*/', fonts).replace('/*__CORE__*/', core).replace('/*__APP__*/', app)
+html = html.replace('/*__FONTS__*/', fonts).replace('/*__JSQR__*/', jsqr).replace('/*__QRGEN__*/', qrgen).replace('/*__CORE__*/', core).replace('/*__APP__*/', app)
 (dist / 'index.html').write_text(html)
 version = re.search(r"VERSION = '([^']+)'", app).group(1)
 sw = """const CACHE = 'chrono-sprint-%s';

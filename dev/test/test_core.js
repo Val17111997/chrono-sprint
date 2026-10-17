@@ -86,6 +86,37 @@ function runDetect(buf, mf, minRatio = 8) {
   ok(r && Math.abs(r.idx / sr - tc) * 1000 < 0.4, `attaque claquement: erreur ${r ? ((r.idx / sr - tc) * 1000).toFixed(3) : '—'} ms`);
 }
 
+// 3b. Synchro « clap-clap » : deux téléphones (micros différents) entendent les mêmes claquements
+{
+  const len = sr * 6;
+  const room = new Float32Array(len); // son au niveau des téléphones
+  const claps = [1.8123, 2.5467];
+  for (let i = 0; i < len; i++) room[i] = 0.004 * gauss() + 0.05 * Math.sin(2 * Math.PI * 90 * i / sr) * (0.5 + 0.5 * Math.sin(i / sr)); // bruit + vent grave
+  for (const tc of claps) { const pc = tc * sr; for (let i = Math.ceil(pc); i < pc + 4000; i++) { const tt = (i - pc) / sr; room[i] += (rnd() * 2 - 1) * 0.6 * Math.exp(-tt / 0.005); } }
+  const phone = (gain, lp, delaySamples, noise) => { // micro : gain, passe-bas du premier ordre, retard, bruit propre
+    const y = new Float32Array(len); let s1 = 0; const a = Math.exp(-2 * Math.PI * lp / sr);
+    for (let i = 0; i < len; i++) { const xi = i - delaySamples >= 0 ? room[i - delaySamples] : 0; s1 = a * s1 + (1 - a) * xi; y[i] = gain * s1 + noise * gauss(); }
+    return y;
+  };
+  const res = [];
+  for (const [g, lp, d] of [[1, 16000, 0], [0.3, 9000, 5], [2.5, 12000, 2]]) {
+    const det = new C.OnsetDetector(sr), x = phone(g, lp, d, 0.001), ons = [];
+    for (let s = 0; s < len; s += 2048) for (const o of det.push(x.subarray(s, s + 2048), s)) ons.push(o);
+    const pair = C.findClapPair(ons, sr);
+    res.push({ ons: ons.length, pair, err: pair ? ((pair.a.frame - d) / sr - claps[0]) * 1000 : NaN });
+  }
+  const errs = res.map(r => r.err), spread = Math.max(...errs) - Math.min(...errs);
+  const ivs = res.map(r => r.pair && r.pair.interval);
+  ok(res.every(r => r.pair && r.ons === 2) && spread < 0.15 && Math.max(...ivs) - Math.min(...ivs) < 0.1, `clap-clap sur 3 micros différents : ${res.map(r => r.ons).join('/')} attaques, origine à ${errs.map(e => e.toFixed(3)).join(' / ')} ms, écart ${spread.toFixed(3)} ms, intervalle ${ivs.map(v => v && v.toFixed(2)).join(' / ')} ms`);
+  // voix + pas : aucune paire
+  const y = new Float32Array(sr * 8);
+  for (let i = 0; i < y.length; i++) { const t = i / sr; const ph = 2 * Math.PI * (180 * t + 20 * Math.sin(2 * t)); let v = 0; for (let h = 1; h < 15; h++) v += Math.sin(h * ph) / h; y[i] = 0.003 * gauss() + 0.15 * v * Math.max(0, Math.sin(t * 5)); }
+  for (const tp of [1, 1.6, 2.2, 2.8, 3.4, 4.0]) { const p0 = tp * sr; for (let i = p0; i < p0 + 2000; i++) y[i] += 0.08 * Math.sin(2 * Math.PI * 60 * (i - p0) / sr) * Math.exp(-(i - p0) / 400); } // pas (graves)
+  const det = new C.OnsetDetector(sr), ons = [];
+  for (let s = 0; s < y.length; s += 2048) for (const o of det.push(y.subarray(s, s + 2048), s)) ons.push(o);
+  ok(!C.findClapPair(ons, sr), `voix + pas : pas de fausse paire (${ons.length} attaques)`);
+}
+
 // 4. Détecteur caméra (images synthétiques, bord anti-aliasé, bruit capteur)
 function frames(o) {
   const w = 120, h = 160, gd = new C.GateDetector(w, h, o.det || {});

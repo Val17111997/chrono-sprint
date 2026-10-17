@@ -1,10 +1,9 @@
 (function () {
   'use strict';
   const CC = window.ChronoCore;
-  const P = 1000;                       // période des bips de synchro (ms, horloge du Départ)
   const MS_PER_M = 1000 / CC.SOUND_SPEED;
-  const D_SYNC_M = 0.1, D_CLAP_M = 0.35, D_SELF_M = 0.08;
-  const VERSION = '1.1.1';
+  const D_CLAP_M = 0.35, D_SELF_M = 0.08;
+  const VERSION = '2.0.0';
 
   // ---------------- utilitaires ----------------
   const $ = (s) => document.querySelector(s);
@@ -29,8 +28,9 @@
     role: null, screen: 'home', started: false,
     mode: store.get('mode', 'bip'),
     settings: Object.assign({ runDist: 100, athDist: 1, dir: 0, voice: true, lead: 25, autoRearm: false }, store.get('settings', {})),
-    s0: null, R: null,           // Départ : origine de la grille (perf) et latence haut-parleur→micro
-    fit: null,                   // Arrivée : ajustement de la synchro
+    origin: null, interval: null, // zéro commun : 1er clap de synchro (perf de ce téléphone) ; intervalle entre les 2 claps
+    R: null,                     // Départ : latence haut-parleur → micro
+    rho: 0,                      // Arrivée : dérive de son horloge par rapport au Départ (mémorisée)
     D: null, Dspread: null,      // latence caméra − micro (ce téléphone)
     results: store.get('results', []),
     starts: [],                  // Départ (cellule) : départs enregistrés
@@ -71,7 +71,6 @@
     async start(tplNames) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC || !navigator.mediaDevices) throw new Error('audio');
-      try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) { }
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 }, video: false });
       this.ctx = new AC({ latencyHint: 'interactive' });
       if (this.ctx.state !== 'running') { try { await this.ctx.resume(); } catch (e) { } }
@@ -105,9 +104,9 @@
         sp.onaudioprocess = (e) => this._push(Math.round(e.playbackTime * sr), new Float32Array(e.inputBuffer.getChannelData(0)));
         src.connect(sp); sp.connect(sink); this.capMode = 'script';
       }
-      this.mf = new CC.MatchedFilter(sr, tplNames.map(n => ({ name: n, data: T[n], group: G[n] })), 32768);
-      this.blk = new Float32Array(this.mf.N);
-      this.ctx.onstatechange = () => { if (this.ctx.state !== 'running') { this.interrupted = true; if (S.s0 != null || S.fit) { S.warnings.add('audio'); renderBanners(); } } };
+      if (tplNames.length) { this.mf = new CC.MatchedFilter(sr, tplNames.map(n => ({ name: n, data: T[n], group: G[n] })), 32768); this.blk = new Float32Array(this.mf.N); }
+      this.onset = new CC.OnsetDetector(sr);
+      this.ctx.onstatechange = () => { if (this.ctx.state !== 'running') { this.interrupted = true; if (S.origin != null) { S.warnings.add('audio'); renderBanners(); } } };
       this.stream.getAudioTracks()[0].onended = () => { S.warnings.add('audio'); renderBanners(); };
       // méthode de correspondance horloge audio ↔ performance.now(), choisie une fois
       await new Promise(r => setTimeout(r, 250));
@@ -191,11 +190,16 @@
       }
       for (let i = 0; i < d.length; i++) {
         const v = d[i]; this.ring[(f + i) & this.mask] = v;
-        if (v === 0) this.zRun++;
-        else { if (this.zRun >= 32 && this.inB.length >= 2) { this.zTotal += this.zRun / this.sr * 1000; this.zb.push([f + i, this.zTotal]); if (this.zb.length > 500) this.zb.shift(); } this.zRun = 0; }
+        if (v < 2e-6 && v > -2e-6) this.zRun++;
+        else { if (this.zRun >= 48 && this.inB.length >= 2) { this.zTotal += this.zRun / this.sr * 1000; this.zb.push([f + i, this.zTotal]); if (this.zb.length > 500) this.zb.shift(); } this.zRun = 0; }
       }
       this.writeFrame = f + d.length;
       if (this.nextBlock == null) this.nextBlock = f;
+      // niveau du micro (affichage) et attaques (claquements de synchro)
+      let e = 0; for (let i = 0; i < d.length; i += 4) e += d[i] * d[i];
+      const db = 10 * Math.log10(e / Math.ceil(d.length / 4) + 1e-12);
+      this.level = this.level == null ? db : Math.max(db, this.level - 1.5);
+      if (this.onset) for (const o of this.onset.push(d, f)) if (this.inB.length >= 2 && this.onOnset) this.onOnset({ frame: o.frame, perf: this.perfOfFrame(o.frame), peak: o.peak, ratio: o.ratio });
     },
     _detect() {
       if (!this.mf || this.nextBlock == null || this.inB.length < 3) return;
@@ -294,174 +298,115 @@
     config(o) { if (this.det) Object.assign(this.det.o, o); else this._pendingO = o; },
   };
 
-  const CTL_GAIN = 0.35;
-
-  // ---------------- appairage (signaux courts 6,5–9,5 kHz) ----------------
-  // L'Arrivée émet « hello » tant qu'elle n'a pas l'ancre de synchro ; le Départ démarre ses bips en l'entendant.
-  // Quand la synchro est bonne, l'Arrivée émet « ok » ×3 ; le Départ s'arrête et les deux passent à l'écran piste.
-  const Pair = {
-    timer: null,
-    startHello() {
-      this.stopHello();
-      const tick = () => {
-        const sf = Listen.sf;
-        if (S.role === 'finish' && Listen.active && Listen.mode === 'sync' && !sf.ready && (sf.cand === null || now() - Listen.candAt > 5000)) Audio.play(BUF.hello, now() + 40, CTL_GAIN);
-      };
-      this.timer = setInterval(tick, 1500); tick();
+  // ---------------- synchro « clap-clap » ----------------
+  // Les deux téléphones, côte à côte, entendent les deux mêmes claquements : l'instant du 1er devient le zéro commun.
+  // Aucun signal ne passe d'un téléphone à l'autre. L'intervalle entre les deux claps, affiché sur les deux écrans,
+  // permet de vérifier d'un coup d'œil qu'ils ont bien entendu les mêmes.
+  const devId = (() => { let v = store.get('devId', null); if (!v) { v = Math.random().toString(36).slice(2, 8); store.set('devId', v); } return v; })();
+  const Sync = {
+    listening: false, purpose: 'start', onsets: [], ignoreUntil: 0, got: null, autoTimer: null, heardAt: 0,
+    listen(purpose) {
+      this.listening = true; this.purpose = purpose; this.onsets = []; this.got = null; this.ignoreUntil = 0;
+      clearTimeout(this.autoTimer); Drift.reset(); renderPrep();
     },
-    stopHello() { if (this.timer) clearInterval(this.timer); this.timer = null; },
-    sendOk() { for (let i = 0; i < 3; i++) Audio.play(BUF.ok, now() + 60 + i * 350, CTL_GAIN); },
+    onOnset(o) {
+      if (!this.listening || S.screen !== 'prep') return;
+      const t = now(); if (t < this.ignoreUntil) return;
+      this.onsets = this.onsets.filter(x => t - x.perf < 3000); this.onsets.push(o); this.heardAt = t;
+      const p = CC.findClapPair(this.onsets, Audio.sr);
+      if (p) { p.interval = p.b.perf - p.a.perf; this.ignoreUntil = t + 1500; this.onsets = []; this._got(p); } // intervalle en temps réel (silences insérés compensés)
+      renderPrep();
+    },
+    _got(p) {
+      Audio.beep(1);
+      if (this.purpose === 'start') {
+        S.origin = p.a.perf; S.interval = p.interval; S.syncGen++; S.lastRes = null; S.starts = [];
+        if (S.warnings.has('audio')) S.D = null;
+        S.warnings.delete('clock'); S.warnings.delete('audio'); renderBanners();
+        this.got = { interval: p.interval, at: now() };
+        if (S.role === 'start') SelfTest.run();
+        clearTimeout(this.autoTimer);
+        const go = () => { if (S.screen !== 'prep' || this.purpose !== 'start') return; if (S.role === 'start' && SelfTest.busy) { this.autoTimer = setTimeout(go, 400); return; } this.listening = false; show('run'); };
+        this.autoTimer = setTimeout(go, 4500);
+      } else {
+        if (S.origin == null) return;
+        this.got = { interval: p.interval, at: now() };
+        Drift.local = { tau: p.a.perf - S.origin, interval: p.interval };
+        this.listening = false;
+        if (S.role === 'start') Drift.showQr(); else Drift.startScan();
+      }
+    },
   };
 
-  // ---------------- Départ : bips de synchro ----------------
-  const Emit = {
-    active: false, checking: false, k: 0, sched: new Map(), Rs: [], timer: null, count: 0, startedAt: 0, helloAt: [], okAt: [],
-    _run() {
-      if (this.timer) clearInterval(this.timer);
-      this.startedAt = now();
-      this.timer = setInterval(() => {
-        this._tick();
-        if (now() - this.startedAt > (this.checking ? 60000 : 120000)) { this.stop(); flashNote('Bips arrêtés : l\'Arrivée n\'a pas répondu.'); renderRun(); }
-        renderPrep();
-      }, 150);
-      this._tick(); renderPrep(); renderRun();
-    },
-    start() { // nouvelle synchro : nouvelle grille
-      this.stop(); this.active = true; this.checking = false; this.k = 0; this.sched.clear(); this.Rs = []; this.count = 0;
-      S.s0 = Math.round(now() + 900); S.R = null; S.Rspread = null; S.prevR = null; S.starts = []; S.syncGen++;
-      if (S.warnings.has('audio')) S.D = null;
-      S.warnings.delete('clock'); S.warnings.delete('audio'); S.warnings.delete('drift-audio'); renderBanners();
-      this._run();
-    },
-    resume() { // contrôle : même grille, bips montants seulement
-      if (S.s0 == null) return this.start();
-      this.stop(); this.active = true; this.checking = true; this.sched.clear(); S.prevR = S.R; this.Rs = []; this.count = 0;
-      this.k = Math.max(1, Math.ceil((now() + 900 - S.s0) / P));
-      this._run();
-    },
-    _tick() {
-      const t = now();
-      while (S.s0 + this.k * P < t + 1000) {
-        const p = S.s0 + this.k * P, r = Audio.play(this.k === 0 ? BUF.down : BUF.up, p, 0.45);
-        if (!r.late) this.sched.set(this.k, { p, src: r.src });
-        this.k++; this.count++;
-      }
-      for (const [k, e] of this.sched) if (t - e.p > 3000) this.sched.delete(k);
-    },
-    stop() {
-      if (this.timer) clearInterval(this.timer); this.timer = null; this.active = false; this.checking = false;
-      const t = now(); for (const e of this.sched.values()) if (e.p > t + 30) { try { e.src.stop(); } catch (x) { } } // bips déjà programmés
+  // ---------------- Départ : latence propre du haut-parleur (pour caler le bip de départ) ----------------
+  const SelfTest = {
+    busy: false, sched: [], Rs: [], tries: 0,
+    run(gain = 0.25) {
+      this.busy = true; this.Rs = []; this.sched = []; this.tries++;
+      const t0 = now() + 300;
+      for (let i = 0; i < 4; i++) { const p = t0 + i * 350; Audio.play(BUF.up, p, gain); this.sched.push(p); }
+      setTimeout(() => {
+        if (this.Rs.length >= 3) { S.R = CC.median(this.Rs); S.Rspread = CC.mad(this.Rs); this.busy = false; this.tries = 0; }
+        else if (this.tries < 2) { this.run(0.7); return; }
+        else { this.busy = false; this.tries = 0; flashPrep('Le Départ ne s\'entend pas : monte le volume.'); flashNote('Le Départ ne s\'entend pas : monte le volume puis « Tester le haut-parleur ».'); }
+        renderPrep(); renderRun();
+      }, 2200);
     },
     onDet(d) {
       if (d.type === 'gun') return Go.onOwnGun(d);
-      if (d.type === 'hello') return this._onHello();
-      if (d.type === 'ok') return this._onOk();
-      for (const [k, e] of this.sched) {
-        const r = d.perf - e.p;
-        if (r > -5 && r < 600) { this.Rs.push(r); this.sched.delete(k); break; }
-      }
-      if (this.Rs.length > 60) this.Rs.shift();
-      // latence propre modifiée pendant la synchro (décrochage audio) : on ne garde que les mesures récentes
-      if (this.Rs.length >= 9) {
-        const last = this.Rs.slice(-5), dm = CC.median(last) - CC.median(this.Rs.slice(0, -5));
-        if (Math.abs(dm) > 2 && CC.mad(last) < 0.7) this.Rs = last;
-      }
-      if (this.Rs.length >= 3) { S.R = CC.median(this.Rs); S.Rspread = CC.mad(this.Rs); }
-    },
-    _onHello() {
-      const t = now(); this.helloAt = this.helloAt.filter(x => t - x < 4000); this.helloAt.push(t);
-      if (Go.p) return;
-      if (this.active && !this.checking && t - this.startedAt < 5000) return; // l'Arrivée n'a pas encore entendu le début
-      if (S.screen === 'prep' || this.helloAt.length >= 2) { // l'Arrivée attend (ou a perdu sa synchro) : on (re)lance
-        this.start(); if (S.screen !== 'prep') show('prep');
-      }
-    },
-    _onOk() {
-      const t = now(); this.okAt = this.okAt.filter(x => t - x < 2500); this.okAt.push(t);
-      if (!this.active || this.okAt.length < 2) return;
-      const wasCheck = this.checking; this.stop(); this.okAt = [];
-      if (S.screen === 'prep') { Audio.beep(1); show('run'); }
-      else { Audio.beep(1); renderRun(); flashNote(wasCheck ? 'Contrôle fait : l\'Arrivée a recalé l\'horloge et corrigé ses temps.' : 'Synchro OK.'); }
+      if (d.type !== 'up' || !this.busy) return;
+      for (let i = 0; i < this.sched.length; i++) { const r = d.perf - this.sched[i]; if (r > -5 && r < 600) { this.Rs.push(r); this.sched.splice(i, 1); break; } }
     },
   };
 
-  // ---------------- Arrivée : écoute de la synchro ----------------
-  const Listen = {
-    active: false, mode: 'sync', sf: new CC.SyncFit(P), sfNew: null, chk: [], chkRes: null, candAt: 0, okSent: false, amps: [], cooldownUntil: 0,
-    start(o = {}) { // nouvelle synchro (écran d'appairage)
-      this.active = true; this.mode = 'sync'; this.sf = o.sf || new CC.SyncFit(P); this.sfNew = null; this.chk = []; this.chkRes = null;
-      this.candAt = now(); this.okSent = false; this.amps = o.amps || [];
-      S.fit = this.sf.fit(); S.syncGen++; S.lastCheck = null; S.lastRes = null;
-      if (S.warnings.has('audio')) S.D = null;
-      S.warnings.delete('clock'); S.warnings.delete('audio'); renderBanners();
-      if (o.hello !== false) Pair.startHello();
+  // ---------------- fin de séance : dérive des horloges (clap-clap + QR code) ----------------
+  const Drift = {
+    local: null, scanning: false, scanTimer: null, result: null, bd: null, cv: null,
+    reset() { this.local = null; this.result = null; this.stopScan(); const q = $('#qrBox'); if (q) q.replaceChildren(); },
+    payload() { return ['CS2', devId, this.local.tau.toFixed(3), this.local.interval.toFixed(2)].join('|'); },
+    showQr() {
+      const qr = qrcode(0, 'M'); qr.addData(this.payload()); qr.make();
+      $('#qrBox').innerHTML = qr.createSvgTag({ cellSize: 6, margin: 3, scalable: true });
       renderPrep();
     },
-    watch() { this.mode = 'watch'; this.chk = []; this.sfNew = null; Pair.stopHello(); },
-    stop() { this.active = false; Pair.stopHello(); },
-    onDet(d) {
-      if (!this.active || d.type === 'hello' || d.type === 'ok') return; // nos propres signaux
-      if (this.mode === 'watch') return this._watch(d);
-      if (d.type === 'down') { this.sf.anchor(d.perf); this.candAt = now(); }
-      else if (d.type === 'up') { const r = this.sf.chirp(d.perf); if (r.k > 0 && d.amp) { this.amps.push(d.amp); if (this.amps.length > 60) this.amps.shift(); } }
-      const f = this.sf.fit(); if (f) S.fit = f;
-      if (!this.okSent && this.status() === 'ok') this._done();
-      renderPrep();
+    startScan() {
+      this.scanning = true; this.stopTimer();
+      if (!this.cv) { this.cv = document.createElement('canvas'); this.g = this.cv.getContext('2d', { willReadFrequently: true }); }
+      if (!this.bd && 'BarcodeDetector' in window) { try { this.bd = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { this.bd = null; } }
+      Cam.mount($('#camPrep'), 'Montre l\'écran du Départ à cette caméra.');
+      this.scanTimer = setInterval(() => this._scan(), 220); renderPrep();
     },
-    _done() {
-      this.okSent = true; S.syncAmp = this.amps.length ? CC.median(this.amps) : null;
-      Pair.stopHello(); Pair.sendOk(); this.cooldownUntil = now() + 10000;
-      setTimeout(() => { if (S.role === 'finish' && this.mode === 'sync') { this.watch(); if (S.screen === 'prep') show('run'); } }, 1400);
-    },
-    _watch(d) { // écran piste : écoute passive (contrôle de fin de séance, ou nouvelle synchro lancée sur le Départ)
-      const t = now();
-      if (d.type === 'down') { this.sfNew = new CC.SyncFit(P); this.sfNew.anchor(d.perf); this.newAmps = []; return; }
-      if (d.type !== 'up') return;
-      if (this.sfNew) {
-        this.sfNew.chirp(d.perf); if (d.amp) this.newAmps.push(d.amp);
-        if (this.sfNew.ready) { const sf = this.sfNew; this.start({ sf, amps: this.newAmps, hello: false }); this.candAt = now(); show('prep'); return; }
-      }
-      if (t < this.cooldownUntil) return;
-      const f = S.fit; if (!f) return;
-      if (S.syncAmp && !(d.amp >= 0.25 * S.syncAmp)) return; // trop faible : les téléphones ne sont pas côte à côte
-      const k = Math.round((d.perf - f.h0) / f.b), r = d.perf - (f.h0 + k * f.b);
-      if (k <= 0 || Math.abs(r) > 80 || this.chk.some(c => c[0] === k)) return;
-      this.chk.push([k, d.perf, r]);
-      if (this.chk.length > 20) this.chk.shift();
-      if (this.chk.length >= 8) {
-        const rs = this.chk.map(c => c[2]), med = CC.median(rs), mad = CC.mad(rs);
-        if (mad < 1) {
-          this.chkRes = { r: med, mad, n: this.chk.length, min: CC.median(this.chk.map(c => c[0])) * P / 60000 };
-          this._apply(); Pair.sendOk(); this.chk = []; this.cooldownUntil = t + 20000;
-          const lc = S.lastCheck;
-          if (lc.min >= 3) flashNote(`Contrôle : dérive de ${fmt.ms1(Math.abs(lc.r))} ms en ${Math.round(lc.min)} min, corrigée${lc.fixed ? ` sur ${lc.fixed} temps` : ''}.`);
-          renderList(); renderChips();
+    stopTimer() { if (this.scanTimer) clearInterval(this.scanTimer); this.scanTimer = null; },
+    stopScan() { this.scanning = false; this.stopTimer(); },
+    async _scan() {
+      if (this._busy || !this.scanning) return; this._busy = true;
+      try {
+        const v = Cam.video, vw = v.videoWidth, vh = v.videoHeight; if (!vw) return;
+        let text = null;
+        if (this.bd) { try { const r = await this.bd.detect(v); if (r && r.length) text = r[0].rawValue; } catch (e) { this.bd = null; } }
+        if (!text && window.jsQR) {
+          const side = Math.min(vw, vh) * 0.8, sx = (vw - side) / 2, sy = (vh - side) / 2, n = 520;
+          this.cv.width = n; this.cv.height = n; this.g.drawImage(v, sx, sy, side, side, 0, 0, n, n);
+          const img = this.g.getImageData(0, 0, n, n), r = window.jsQR(img.data, n, n, { inversionAttempts: 'dontInvert' });
+          if (r) text = r.data;
         }
-      }
+        if (text) this._read(text);
+      } finally { this._busy = false; }
     },
-    _apply() { // droite recalculée sur toute la séance, puis correction des temps déjà enregistrés
-      const c = this.chkRes, good = this.chk.filter(x => Math.abs(x[2] - c.r) <= 3 * Math.max(0.3, c.mad));
-      this.sf.pts = this.sf.pts.concat(good.map(x => [x[0], x[1], this.sf.seg])); // même segment : l'écart est traité comme une dérive
-      const nf = this.sf.fit(); S.fit = nf;
+    _read(text) {
+      const f = String(text).split('|');
+      if (f[0] !== 'CS2' || f.length < 4) return;
+      const tauD = parseFloat(f[2]), ivD = parseFloat(f[3]), L = this.local;
+      if (!isFinite(tauD) || !L) return;
+      this.stopScan(); Audio.beep(2);
+      if (Math.abs(ivD - L.interval) > 3) { this.result = { error: `Les deux téléphones n'ont pas entendu les mêmes claps (${fmt.t3(L.interval)} s contre ${fmt.t3(ivD)} s). Refais un clap-clap.` }; renderPrep(); return; }
+      const rho = L.tau / tauD - 1, before = S.rho || 0;
+      S.rho = rho; store.set('rho', { id: f[1], rho, at: Date.now() });
       let fixed = 0;
-      for (const res of S.results) if (res.gen === S.syncGen && res.raw != null) {
-        const tau = (res.raw - nf.h0) * (P / nf.b);
-        res.T = tau - res.n * CC.GRID - res.ath * MS_PER_M; res.fixed = true; fixed++;
-      }
+      for (const res of S.results) if (res.gen === S.syncGen && res.raw != null) { res.T = res.raw / (1 + rho) - res.n * CC.GRID - res.ath * MS_PER_M; res.fixed = true; fixed++; }
       store.set('results', S.results);
-      S.lastCheck = { r: c.r, min: c.min, fixed };
-    },
-    status() {
-      const f = S.fit;
-      if (!f) return this.sf.cand !== null || this.sf.pts.length ? 'anchor' : 'wait';
-      if (this.mode === 'watch') return 'ok';
-      if ((f.n >= 15 && f.err30 <= 4 && f.resid <= 0.6) || (f.n >= 40 && f.resid <= 1)) return 'ok';
-      return 'progress';
-    },
-    progress() {
-      const f = S.fit; if (!f || f.n < 2) return this.sf.cand !== null ? 0.05 : 0;
-      if (this.status() === 'ok') return 1;
-      return Math.min(0.97, Math.max(f.n / 40, Math.min(f.n / 15, isFinite(f.err30) ? Math.max(0.1, Math.min(1, 4 / f.err30)) : 0.1)));
+      this.result = { rho, err: (rho - before) * tauD, min: tauD / 60000, fixed };
+      renderPrep(); renderChips();
     },
   };
 
@@ -508,9 +453,10 @@
   const Go = {
     p: null, timer: null, log: [],
     launch() {
-      if (S.s0 == null) return;
+      if (S.origin == null || S.R == null) return;
       const t = now(), lead = Math.max(15, S.settings.lead) * 1000;
-      const n = Math.ceil((t + lead - S.s0) / CC.GRID), sPerf = S.s0 + n * CC.GRID;
+      // le son doit sortir du haut-parleur pile à zéro + n minutes : on l'envoie en avance de la latence propre
+      const n = Math.ceil((t + lead - S.origin) / CC.GRID), sPerf = S.origin + n * CC.GRID - (S.R - D_SELF_M * MS_PER_M);
       const mLead = Math.min(sPerf - t - 2500, 13000 + Math.random() * 5000), setLead = 1600 + Math.random() * 800;
       S.warnings.delete('late'); S.warnings.delete('drift-audio'); renderBanners();
       this.p = { n, sPerf, tMarks: sPerf - mLead, tSet: sPerf - setLead, marks: false, set: false, sched: null };
@@ -535,7 +481,8 @@
       const p = this.p; if (!p || S.R == null) return;
       const r = d.perf - p.sPerf; if (r < -5 || r > 600) return;
       p.Rgo = r;
-      if (Math.abs(r - S.R) > 2) { S.warnings.add('drift-audio'); S.lastRgoDiff = r - S.R; renderBanners(); }
+      if (Math.abs(r - S.R) > 2) { S.warnings.add('drift-audio'); S.lastRgoDiff = r - S.R; renderBanners(); S.R = r; }
+      else S.R = 0.7 * S.R + 0.3 * r; // suit les petites variations pour les départs suivants
     },
   };
 
@@ -555,10 +502,10 @@
   }
   const detail = (T) => `${fmt.t3(T)} s · ${S.settings.runDist} m · ${comma((S.settings.runDist / (T / 1000)).toFixed(2))} m/s`;
   function onFinish(ev) {
-    if (!S.fit) { flashNote('Passage détecté, mais la synchro manque.'); return; }
+    if (S.origin == null) { flashNote('Passage détecté, mais la synchro manque.'); return; }
     const D = S.D != null ? S.D : 0;
-    const raw = ev.t - D + D_SYNC_M * MS_PER_M;
-    const tau = (raw - S.fit.h0) * (P / S.fit.b);
+    const raw = ev.t - D - S.origin;           // temps depuis le clap, horloge de l'Arrivée
+    const tau = raw / (1 + (S.rho || 0));      // ramené à l'horloge du Départ (dérive mémorisée)
     const code = CC.codeOf(tau);
     S.lastPassage = { tau, code, at: Date.now(), dir: ev.dir };
     if (S.mode === 'bip') {
@@ -580,8 +527,8 @@
   }
   function onStart(ev) {
     if (S.mode !== 'cell') return;
-    if (S.s0 == null || S.R == null) { flashNote('Départ détecté, mais la synchro manque.'); return; }
-    const tau = CC.tauStart(ev.t, S.s0, S.D != null ? S.D : 0, S.R, D_SELF_M);
+    if (S.origin == null) { flashNote('Départ détecté, mais la synchro manque.'); return; }
+    const tau = ev.t - (S.D != null ? S.D : 0) - S.origin;
     S.starts.unshift({ tau, at: Date.now(), used: false }); if (S.starts.length > 12) S.starts.pop();
     if (!S.settings.autoRearm && Cam.det) Cam.det.armed = false;
     showBig('Parti', 'Départ enregistré à ' + fmt.hm(Date.now()) + '. Tape le code affiché par l\'Arrivée.', 'Cellule', 'go');
@@ -613,21 +560,20 @@
   function renderChips() {
     const c = $('#chips'); if (!S.started) return;
     const chips = [];
-    if (S.role === 'finish') {
-      const st = Listen.status();
-      chips.push(S.fit && st === 'ok' ? ['ok', 'Synchro ±' + fmt.ms1(Math.max(0.1, S.fit.err30)) + ' ms'] : S.fit ? ['warn', 'Synchro en cours'] : ['bad', 'Pas de synchro']);
-    } else chips.push(Emit.active ? ['warn', Emit.checking ? 'Contrôle en cours' : 'Synchro en cours'] : S.s0 != null ? ['ok', 'Synchro faite'] : ['bad', 'Pas de synchro']);
+    chips.push(S.origin != null ? ['ok', 'Synchro ' + fmt.t3(S.interval) + ' s'] : ['bad', 'Pas de synchro']);
+    if (S.role === 'start') chips.push(S.R != null ? ['ok', 'Haut-parleur OK'] : ['warn', 'Haut-parleur ?']);
+    if (S.role === 'finish' && S.origin != null) chips.push(S.rho ? ['ok', 'Dérive ' + comma((S.rho * 1e6).toFixed(1)) + ' ppm'] : ['', 'Dérive à mesurer']);
     if (needCalib()) chips.push(S.D != null ? ['ok', 'Caméra calibrée'] : ['warn', 'Caméra à calibrer']);
     chips.push([Cam.fps >= 50 ? 'ok' : Cam.fps >= 24 ? '' : 'bad', Math.round(Cam.fps) + ' i/s']);
     c.replaceChildren(...chips.map(([k, t]) => mk('span', 'chip ' + k, t)));
   }
   function renderBanners() {
     const b = $('#banners'), items = [];
-    if (S.warnings.has('clock')) items.push(['bad', 'Horloge interrompue (mise en veille ou appli quittée) : remets les téléphones côte à côte, Réglages → Refaire la synchro.']);
-    if (S.warnings.has('audio')) items.push(['bad', 'Le son a été interrompu : remets les téléphones côte à côte, Réglages → Refaire la synchro.']);
+    if (S.warnings.has('clock')) items.push(['bad', 'Horloge interrompue (mise en veille ou appli quittée) : remets les téléphones côte à côte et refais un clap-clap (Réglages → Refaire la synchro).']);
+    if (S.warnings.has('audio')) items.push(['bad', 'Le micro a été interrompu : refais un clap-clap (Réglages → Refaire la synchro).']);
     if (S.warnings.has('camera')) items.push(['bad', 'La caméra s\'est arrêtée : recharge la page puis refais la synchro.']);
     if (S.warnings.has('late')) items.push(['bad', 'Le bip est parti en retard (téléphone surchargé) : ce départ n\'est pas fiable.']);
-    if (S.warnings.has('drift-audio')) items.push(['', `Le dernier bip de départ est parti avec ${fmt.ms1(Math.abs(S.lastRgoDiff || 0))} ms d'écart : ce temps peut être faussé d'autant. Fais un contrôle de synchro.`]);
+    if (S.warnings.has('drift-audio')) items.push(['', `Le dernier bip de départ est parti avec ${fmt.ms1(Math.abs(S.lastRgoDiff || 0))} ms d'écart : ce temps peut être faussé d'autant. Refais la synchro si ça se répète.`]);
     if (S.D != null && Cam.restarts > (S.camRestartsAtClap || 0)) items.push(['', 'La caméra a redémarré : Réglages → Recalibrer la caméra.']);
     b.replaceChildren(...items.map(([k, t]) => mk('div', 'banner ' + k, t)));
   }
@@ -636,34 +582,49 @@
     if (S.screen !== 'prep') return;
     const btns = $('#pairBtns'); btns.replaceChildren();
     const btn = (label, cls, fn) => { const b = mk('button', 'btn ' + cls, label); b.onclick = fn; btns.append(b); return b; };
-    let title, help, prog, pairs, state = '';
-    if (S.role === 'start') {
-      if (!Emit.active) {
-        title = 'En attente de l\'Arrivée'; prog = 0; state = 'wait';
-        help = 'Pose ce téléphone à 10 cm de l\'autre, volume à fond, et ouvre « Arrivée » dessus. La synchro démarre toute seule.';
-        btn('Lancer les bips moi-même', 'ghost', () => Emit.start());
-      } else {
-        title = 'Synchronisation…'; state = 'run';
-        prog = Math.min(0.95, (now() - Emit.startedAt) / 30000);
-        help = 'Ne bouge pas les téléphones. Ça s\'arrête tout seul quand l\'Arrivée a fini (environ 30 s).';
-        btn('Arrêter', 'ghost', () => { Emit.stop(); renderPrep(); });
-      }
-      pairs = [['Bips émis', String(Emit.count)], ['Latence son', S.R != null ? fmt.ms1(S.R) + ' ms' : '—']];
+    const end = Sync.purpose === 'end', g = Sync.got, scr = $('#scrPrep');
+    let title, help, state = 'wait', big = '';
+    $('#qrWrap').hidden = true; $('#camPrep').hidden = true;
+    if (!g) {
+      const heard = Sync.onsets.length && now() - Sync.heardAt < 1600;
+      title = end ? 'Fin de séance' : 'Clap-clap';
+      help = end ? 'Remets les deux téléphones côte à côte et claque 2 fois des mains juste au-dessus. La dérive des horloges sera mesurée et tes temps corrigés.'
+        : 'Pose les deux téléphones côte à côte, écrans vers le haut, et claque 2 fois des mains juste au-dessus d\'eux.';
+      big = heard ? '1 clap…' : '';
+      state = heard ? 'run' : 'wait';
+      if (end) btn('Annuler', 'ghost', () => { Sync.listening = false; show('run'); });
+    } else if (!end) {
+      title = 'Synchro faite'; state = 'ok'; big = fmt.t3(g.interval) + ' s';
+      help = 'L\'autre téléphone doit afficher le même nombre (à 1 millième près). Sinon, refais un clap-clap.';
+      if (S.role === 'start') help += SelfTest.busy ? ' Test du haut-parleur…' : S.R != null ? ' Haut-parleur OK.' : '';
+      btn('Continuer', 'primary', () => { clearTimeout(Sync.autoTimer); Sync.listening = false; show('run'); });
+      btn('Refaire', 'ghost', () => Sync.listen('start'));
     } else {
-      const st = Listen.status(), f = S.fit;
-      prog = Listen.progress();
-      if (st === 'wait') { title = 'En attente du Départ'; state = 'wait'; help = 'Pose ce téléphone à 10 cm de l\'autre, volume à fond, et ouvre « Départ » dessus. La synchro démarre toute seule.'; }
-      else if (st === 'ok') { title = 'Synchro OK'; state = 'ok'; help = 'Passage à l\'écran piste…'; }
-      else { title = 'Synchronisation…'; state = 'run'; help = 'Ne bouge pas les téléphones (environ 30 s).'; }
-      pairs = [['Bips reçus', f ? String(f.n) : '0'], ['Précision 30 min', f && f.n >= 8 && isFinite(f.err30) ? '±' + fmt.ms1(f.err30) + ' ms' : '—']];
-      btn('Recommencer', 'ghost', () => Listen.start());
+      big = fmt.t3(g.interval) + ' s'; state = 'ok';
+      if (S.role === 'start') {
+        title = 'Montre ce QR code';
+        help = 'Présente cet écran à la caméra de l\'Arrivée, à 20–30 cm. Elle doit afficher le même nombre (à 1 millième près).';
+        $('#qrWrap').hidden = false;
+        btn('Terminé', 'primary', () => { Drift.reset(); show('run'); });
+      } else {
+        const r = Drift.result;
+        if (!r) { title = 'Scanne le Départ'; help = 'Pointe la caméra vers le QR code affiché par le Départ.'; $('#camPrep').hidden = false; state = 'run'; }
+        else if (r.error) { title = 'À refaire'; state = 'wait'; help = r.error; btn('Refaire un clap-clap', 'primary', () => Sync.listen('end')); }
+        else {
+          title = 'Dérive corrigée';
+          help = `Écart d'horloge : ${fmt.ms1(Math.abs(r.err))} ms en ${Math.max(1, Math.round(r.min))} min (${comma((r.rho * 1e6).toFixed(1))} ppm, mémorisé pour les prochaines séances).` + (r.fixed ? ` ${r.fixed} temps corrigé${r.fixed > 1 ? 's' : ''}.` : '');
+          btn('Continuer', 'primary', () => { Drift.reset(); show('run'); });
+        }
+        if (!r) btn('Annuler', 'ghost', () => { Drift.reset(); show('run'); });
+      }
     }
-    $('#pairTitle').textContent = title; $('#pairHelp').textContent = help;
-    $('#pairBar').style.width = Math.round(prog * 100) + '%';
-    $('#scrPrep').dataset.state = state;
-    kv($('#syncKv'), pairs);
+    $('#pairTitle').textContent = title; $('#pairHelp').textContent = help; $('#pairBig').textContent = big;
+    scr.dataset.state = state;
     renderChips();
   }
+  function flashPrep(t) { const e = $('#prepNote'); if (e) e.textContent = t; }
+  // niveau du micro sur l'écran de synchro
+  setInterval(() => { if (S.screen !== 'prep' || Audio.level == null) return; const m = $('#micBar'); if (m) m.style.width = Math.max(0, Math.min(100, (Audio.level + 70) / 60 * 100)) + '%'; }, 80);
   function renderCountdown() {
     if (S.screen !== 'run' || S.role !== 'start' || S.mode !== 'bip') return;
     const p = Go.p, b = $('#big');
@@ -696,8 +657,12 @@
         if (!Go.p) { const b = $('#big'); b.textContent = '—'; b.className = 'big num dim'; $('#bigSub').textContent = 'Le bip tombera sur la prochaine minute ronde (≥ ' + S.settings.lead + ' s).'; }
         const b = mk('button', 'btn ' + (Go.p ? '' : 'primary') + ' wide', Go.p ? 'Annuler ce départ' : 'Lancer un départ');
         b.onclick = () => { Voice.unlock(); Go.p ? Go.cancel() : Go.launch(); };
-        b.disabled = S.s0 == null || Emit.active;
+        b.disabled = S.origin == null || S.R == null;
         ctl.append(b);
+        if (S.origin != null && S.R == null && !SelfTest.busy) {
+          const tb = mk('button', 'btn', 'Tester le haut-parleur'); tb.onclick = () => { SelfTest.tries = 0; SelfTest.run(); renderRun(); };
+          ctl.append(mk('p', 'note', 'Le Départ doit s\'entendre une fois pour caler le bip. Monte le volume puis :'), tb);
+        }
         if (Go.log.length) ctl.append(mk('p', 'note', `${Go.log.length} départ(s) donné(s). Dernier à ${fmt.hm(Go.log[0].at)}.`));
       } else {
         Cam.mount(camRun, 'Ligne rouge 50 cm devant ta ligne de départ.');
@@ -723,20 +688,20 @@
         }
         ctl.append(mk('span', 'lbl note', 'Code affiché par l\'Arrivée'), box, pad);
       }
-      // contrôle de synchro : un bouton, téléphones côte à côte
+      // fin de séance : correction de la dérive
       const row = mk('div', 'check-row');
-      if (Emit.active && Emit.checking) {
-        row.append(mk('span', 'note', 'Contrôle en cours : téléphones côte à côte. S\'arrête tout seul.'));
-        const st = mk('button', 'btn ghost', 'Arrêter'); st.onclick = () => { Emit.stop(); renderRun(); }; row.append(st);
-      } else if (!Emit.active) {
-        const cb = mk('button', 'btn ghost', 'Contrôler la synchro'); cb.disabled = S.s0 == null || !!Go.p;
-        cb.onclick = () => { Emit.resume(); renderRun(); };
-        row.append(cb, mk('span', 'note', 'En fin de séance, téléphones côte à côte : corrige les temps de l\'Arrivée.'));
-      }
+      const cb = mk('button', 'btn ghost', 'Corriger la dérive'); cb.disabled = S.origin == null || !!Go.p;
+      cb.onclick = () => { show('prep'); Sync.listen('end'); };
+      row.append(cb, mk('span', 'note', 'En fin de séance (ou après l\'échauffement), téléphones côte à côte : clap-clap puis QR code.'));
       ctl.append(row);
     } else {
       camRun.hidden = false;
       Cam.mount(camRun, 'Ligne rouge sur ta ligne d\'arrivée.');
+      const row = mk('div', 'check-row');
+      const cb = mk('button', 'btn ghost', 'Corriger la dérive'); cb.disabled = S.origin == null;
+      cb.onclick = () => { show('prep'); Sync.listen('end'); };
+      row.append(cb, mk('span', 'note', S.rho ? 'Dérive mémorisée : temps déjà corrigés. Refais-la de temps en temps.' : 'À faire en fin de séance (ou après l\'échauffement) : corrige tous les temps.'));
+      ctl.append(row);
       if (!S.results.length && !S.lastPassage && $('#bigLbl').textContent !== 'Caméra calibrée') showBig('—', S.mode === 'bip' ? 'En attente d\'un passage' : 'Le code de ton passage s\'affichera ici', S.mode === 'bip' ? 'Dernier temps' : 'Code du passage', 'dim');
     }
     renderList(); renderChips(); renderBanners();
@@ -764,8 +729,7 @@
   setInterval(() => {
     if (S.screen !== 'run') return;
     let tau = null;
-    if (S.role === 'finish' && S.fit) tau = (now() - S.fit.h0) * (P / S.fit.b);
-    if (S.role === 'start' && S.s0 != null) tau = now() - S.s0;
+    if (S.origin != null) tau = (now() - S.origin) / (S.role === 'finish' ? 1 + (S.rho || 0) : 1);
     $('#commonClock').textContent = tau == null ? '—' : fmt.clock(tau);
     const ri = $('#runInfo');
     if (S.role === 'finish' && S.mode === 'bip' && tau != null) ri.textContent = '+' + comma(((tau % CC.GRID) / 1000).toFixed(1)) + ' s depuis la minute ronde';
@@ -775,10 +739,10 @@
 
   // surveillance de l'horloge (mise en veille, page masquée)
   let lastGap = Date.now() - performance.now(), hiddenAt = null;
-  setInterval(() => { const g = Date.now() - performance.now(); if (Math.abs(g - lastGap) > 40 && (S.s0 != null || S.fit)) { S.warnings.add('clock'); renderBanners(); } lastGap = g; }, 1000);
+  setInterval(() => { const g = Date.now() - performance.now(); if (Math.abs(g - lastGap) > 40 && (S.origin != null)) { S.warnings.add('clock'); renderBanners(); } lastGap = g; }, 1000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') hiddenAt = now();
-    else { if (S.started) Wake.on(); if (hiddenAt && now() - hiddenAt > 3000 && (S.s0 != null || S.fit)) { S.warnings.add('clock'); renderBanners(); } hiddenAt = null; }
+    else { if (S.started) Wake.on(); if (hiddenAt && now() - hiddenAt > 3000 && (S.origin != null)) { S.warnings.add('clock'); renderBanners(); } hiddenAt = null; }
   });
 
   // ---------------- navigation ----------------
@@ -787,6 +751,7 @@
     for (const id of ['scrHome', 'scrPrep', 'scrRun']) $('#' + id).hidden = id !== 'scr' + screen[0].toUpperCase() + screen.slice(1);
     $('#btnSettings').hidden = screen === 'home'; $('#chips').hidden = screen === 'home';
     if (screen === 'prep') { if (Clap.active) { Clap.active = false; clearInterval(Clap.timer); Clap.timer = null; applyGateConfig(); } renderPrep(); }
+    else { Drift.stopScan(); }
     if (screen === 'run') { applyGateConfig(); renderRun(); }
     window.scrollTo(0, 0);
   }
@@ -798,7 +763,7 @@
     Voice.init(); Voice.unlock();
     try {
       if (!window.isSecureContext) throw new Error('secure');
-      await Audio.start(role === 'start' ? ['down', 'up', 'hello', 'ok', 'gun'] : ['down', 'up', 'hello', 'ok']);
+      await Audio.start(role === 'start' ? ['up', 'gun'] : []);
       await Cam.start();
     } catch (e) {
       console.error(e);
@@ -810,10 +775,11 @@
       return;
     }
     S.started = true; Wake.on();
-    Audio.onDet = (d) => role === 'start' ? Emit.onDet(d) : Listen.onDet(d);
+    Audio.onDet = (d) => { if (role === 'start') SelfTest.onDet(d); };
+    Audio.onOnset = (o) => Sync.onOnset(o);
     Cam.onEvent = onGate;
-    show('prep');
-    if (role === 'finish') Listen.start();
+    const saved = store.get('rho', null); S.rho = saved && Date.now() - saved.at < 120 * 864e5 ? saved.rho : 0;
+    show('prep'); Sync.listen('start');
   }
 
   // reprise du son après une interruption (appel, mise en arrière-plan) : nécessite un toucher sur iOS
@@ -846,7 +812,7 @@
   dlg.addEventListener('close', readSettings);
   $('#btnResync').onclick = () => {
     dlg.close(); if (Go.p) Go.cancel();
-    if (S.role === 'finish') { show('prep'); Listen.start(); } else { Emit.stop(); show('prep'); }
+    show('prep'); Sync.listen('start');
     renderBanners();
   };
   $('#btnRecalib').onclick = () => { dlg.close(); S.D = null; if (S.screen === 'run') Clap.start(); };
@@ -860,5 +826,5 @@
     // nouvelle version installée : on recharge tout de suite si aucune séance n'est en cours
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadCtl && !S.started) location.reload(); });
   }
-  window.ChronoApp = { S, Audio, Cam, Emit, Listen, Clap, Go, Pair, VERSION, enterCode, show };
+  window.ChronoApp = { S, Audio, Cam, Sync, SelfTest, Drift, Clap, Go, VERSION, enterCode, show };
 })();

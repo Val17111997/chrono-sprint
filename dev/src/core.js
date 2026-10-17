@@ -186,6 +186,75 @@
     return { idx: onset, ratio: pv / floor };
   }
 
+  // ---------------- Détecteur d'attaques en continu (claquements de synchro) ----------------
+  // Passe-haut 4 ordres (> fc), enveloppe |y| sur 0,25 ms, plancher de bruit lent ; une attaque = enveloppe > plancher × ratio.
+  // L'instant retenu est le début de la montée (premier échantillon au-dessus de 12 % du pic), comme detectClapOnset.
+  class OnsetDetector {
+    constructor(sr, o = {}) {
+      this.sr = sr; this.o = Object.assign({ fc: 1500, ratio: 25, refractMs: 120 }, o);
+      this.c = biquadHP(sr, Math.min(this.o.fc, sr * 0.45));
+      this.z = new Float64Array(16); // 4 étages × (x1, x2, y1, y2)
+      this.win = Math.max(2, Math.round(0.00025 * sr)); this.wbuf = new Float32Array(this.win); this.wi = 0; this.acc = 0;
+      this.H = Math.round(0.04 * sr); this.hist = new Float32Array(this.H); this.f = 0;
+      this.floor = 0; this.fAcc = 0; this.fN = 0; this.warm = Math.round(0.3 * sr);
+      this.trig = null; this.last = -1e12;
+    }
+    push(x, f0) {
+      const out = [], c = this.c, z = this.z, H = this.H, o = this.o, sr = this.sr;
+      if (f0 !== undefined && f0 !== this.f) this.f = f0;
+      for (let i = 0; i < x.length; i++) {
+        let v = x[i];
+        for (let s = 0; s < 4; s++) {
+          const k = s * 4, y = c.b0 * v + c.b1 * z[k] + c.b2 * z[k + 1] - c.a1 * z[k + 2] - c.a2 * z[k + 3];
+          z[k + 1] = z[k]; z[k] = v; z[k + 3] = z[k + 2]; z[k + 2] = y; v = y;
+        }
+        const a = v < 0 ? -v : v;
+        this.acc += a - this.wbuf[this.wi]; this.wbuf[this.wi] = a; this.wi = (this.wi + 1) % this.win;
+        const env = this.acc / this.win, f = this.f++;
+        this.hist[f % H] = env;
+        // plancher : moyenne par blocs de 10 ms, descend vite, monte lentement
+        this.fAcc += env; this.fN++;
+        if (this.fN >= sr / 100) {
+          const m = this.fAcc / this.fN; this.fAcc = 0; this.fN = 0;
+          if (!this.floor) this.floor = m;
+          else if (!this.trig) this.floor += (m < this.floor ? 0.3 : 0.01) * (m - this.floor);
+        }
+        if (f < this.warm || !this.floor) continue;
+        if (!this.trig) {
+          if (env > this.floor * o.ratio && f - this.last > o.refractMs / 1000 * sr) this.trig = { f, peak: env, pf: f, floor: this.floor };
+        } else {
+          if (env > this.trig.peak) { this.trig.peak = env; this.trig.pf = f; }
+          if (f - this.trig.f > 0.005 * sr) {
+            const t = this.trig, lvl = Math.max(t.floor * 4, 0.12 * t.peak);
+            let j = t.pf; const lim = Math.max(t.pf - Math.round(0.02 * sr), f - H + 1);
+            while (j > lim && this.hist[(j - 1) % H] > lvl) j--;
+            out.push({ frame: j - this.win / 2, peak: t.peak, ratio: t.peak / t.floor });
+            this.last = t.f; this.trig = null;
+          }
+        }
+      }
+      return out;
+    }
+  }
+
+  // Paire de claquements « clap-clap » : deux attaques à 0,25–1,5 s d'intervalle, d'intensités voisines (±12 dB),
+  // sans autre attaque forte entre elles. Renvoie { first, second, interval } (indices d'attaques) ou null.
+  function findClapPair(onsets, sr) {
+    for (let j = onsets.length - 1; j >= 1; j--) {
+      const b = onsets[j];
+      for (let i = j - 1; i >= 0; i--) {
+        const a = onsets[i], dt = (b.frame - a.frame) / sr;
+        if (dt < 0.25) continue;
+        if (dt > 1.5) break;
+        const r = a.peak / b.peak; if (r > 4 || r < 0.25) continue;
+        const between = onsets.slice(i + 1, j).some(m => m.peak > 0.3 * Math.min(a.peak, b.peak));
+        if (between) continue;
+        return { a, b, interval: dt * 1000 };
+      }
+    }
+    return null;
+  }
+
   // ---------------- Détecteur de passage caméra ----------------
   // Image luminance w×h (portrait). Ligne de cellule = colonne centrale.
   // Mode « torse » (band ≠ null) : le déclenchement initial (bras, main…) ouvre une attente ; l'instant retenu est celui où
@@ -467,6 +536,6 @@
   function codeOf(tau) { return ((Math.round(tau) % CODE_MOD) + CODE_MOD) % CODE_MOD; }
   function codeDiff(code, tauA) { return ((code - Math.round(tauA)) % CODE_MOD + CODE_MOD) % CODE_MOD; }
 
-  const API = { SOUND_SPEED, FFT, makeChirp, makeGun, median, mad, MatchedFilter, detectClapOnset, GateDetector, linfit, SyncFit, tauFinish, tauStart, gridResult, codeOf, codeDiff, GRID, CODE_MOD };
+  const API = { SOUND_SPEED, FFT, makeChirp, makeGun, median, mad, MatchedFilter, detectClapOnset, OnsetDetector, findClapPair, GateDetector, linfit, SyncFit, tauFinish, tauStart, gridResult, codeOf, codeDiff, GRID, CODE_MOD };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.ChronoCore = API;
 })(typeof self !== 'undefined' ? self : this);
